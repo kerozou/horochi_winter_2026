@@ -1,0 +1,56 @@
+name: cdk-github-actions
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+jobs:
+  cdk-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Use Node.js 20.16
+        uses: actions/setup-node@v1
+        with:
+          node-version: 20.16
+
+      - name: Setup dependencies
+        if: github.event_name == 'push'
+        run: npm ci
+        working-directory: infra/CDK
+
+      - name: Load environment variables
+        run: |
+          echo "DOMAIN_NAME=${{ secrets.DOMAIN_NAME }}" >> $GITHUB_ENV
+          echo "SUBDOMAIN_NAME=${{ secrets.SUBDOMAIN_NAME }}" >> $GITHUB_ENV
+          echo "CERTIFICATE_ARN=${{ secrets.CERTIFICATE_ARN }}" >> $GITHUB_ENV
+          echo "CDK_DEFAULT_ACCOUNT=${{ secrets.CDK_DEFAULT_ACCOUNT }}" >> $GITHUB_ENV
+          echo "CDK_DEFAULT_REGION=${{ secrets.CDK_DEFAULT_REGION }}" >> $GITHUB_ENV
+
+      - name: Build
+        if: github.event_name == 'push'
+        run: npm run build
+        working-directory: infra/CDK
+
+      - name: CDK Deploy
+        if: github.event_name == 'push'
+        run: npm run cdk -- --app="./bin/cdk.js" deploy StaticSiteStack
+        env:
+          AWS_DEFAULT_REGION: 'ap-northeast-1'
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        working-directory: infra/CDK
+
+      - name: Install GitHub CLI
+        if: github.event_name == 'push'
+        run: sudo apt-get install gh
+
+      - name: Create or Update Release
+        if: github.event_name == 'push'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG_NAME="v$(date +'%Y%m%d%H%M%S')"
+          RELEASE_NAME="Release $TAG_NAME"
+          gh release create $TAG_NAME --title "$RELEASE_NAME" --notes "Automated release from GitHub Actions"

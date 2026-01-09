@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <title>ほろっちの冬休み 2026</title>
+    <link rel="icon" type="image/png" href="resources/icon.png">
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        #game-container {
+            border: 3px solid #fff;
+            border-radius: 10px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+            background: #000;
+            width: 1200px;
+            height: 800px;
+        }
+        .info {
+            text-align: center;
+            color: white;
+            margin-bottom: 10px;
+        }
+        canvas {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div>
+        <div class="info">
+            <h1></h1>
+            <p></p>
+        </div>
+        <div id="game-container"></div>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
+    <script type="module">
+        // タイムスタンプでキャッシュを強制的にバイパス
+        const timestamp = Date.now();
+        import(`./game.js?t=${timestamp}`);
+    </script>
+    <script>
+        // ゲームエリア内で右クリックメニューを無効化
+        document.addEventListener('DOMContentLoaded', () => {
+            const gameContainer = document.getElementById('game-container');
+            if (gameContainer) {
+                gameContainer.addEventListener('contextmenu', (e) => {
+                    e.preventDefault();
+                    return false;
+                });
+            }
+        });
+    </script>
+</body>
+</html>
+

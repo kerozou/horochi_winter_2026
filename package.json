@@ -1,0 +1,24 @@
+{
+  "name": "hororocket",
+  "version": "1.0.0",
+  "description": "2D Rocket Launch Game with Phaser.js",
+  "main": "game.js",
+  "type": "module",
+  "scripts": {
+    "start": "npx http-server -p 8000 -c-1",
+    "dev": "npx http-server -p 8000 -c-1 -o"
+  },
+  "keywords": [
+    "phaser",
+    "game",
+    "rocket",
+    "physics"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "phaser": "^3.80.1"
+  },
+  "devDependencies": {}
+}
+
