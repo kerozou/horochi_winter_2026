@@ -9,6 +9,10 @@
     <title>ほろっちの冬休み 2026</title>
     <link rel="icon" type="image/png" href="resources/icon.png">
     <style>
+        * {
+            box-sizing: border-box;
+        }
+        
         body {
             margin: 0;
             padding: 0;
@@ -18,7 +22,9 @@
             min-height: 100vh;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            overflow: hidden;
         }
+        
         #game-container {
             border: 3px solid #fff;
             border-radius: 10px;
@@ -26,14 +32,65 @@
             background: #000;
             width: 1200px;
             height: 800px;
+            position: relative;
+            overflow: hidden;
         }
+        
         .info {
             text-align: center;
             color: white;
             margin-bottom: 10px;
         }
+        
         canvas {
             display: block;
+            max-width: 100%;
+            max-height: 100%;
+        }
+        
+        /* スマートフォン対応 */
+        @media screen and (max-width: 768px) {
+            body {
+                background: #000;
+                padding: 0;
+                margin: 0;
+            }
+            
+            #game-container {
+                width: 100vw;
+                height: 100vh;
+                border: none;
+                border-radius: 0;
+                box-shadow: none;
+                position: fixed;
+                top: 0;
+                left: 0;
+                overflow: hidden;
+            }
+            
+            .info {
+                display: none;
+            }
+        }
+        
+        /* タブレット対応（オプション） */
+        @media screen and (min-width: 769px) and (max-width: 1024px) {
+            #game-container {
+                width: 100vw;
+                height: calc(100vw * 800 / 1200);
+                max-height: 100vh;
+                border: none;
+                border-radius: 0;
+                overflow: hidden;
+            }
+            
+            body {
+                background: #000;
+            }
+            
+            .info {
+                display: none;
+            }
         }
     </style>
 </head>

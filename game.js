@@ -41,7 +41,14 @@ import { GameConfig } from './config/gameConfig.js';
             parent: 'game-container',
             backgroundColor: GameConfig.backgroundColor,
             physics: GameConfig.physics,
-            scene: [EntryScene, TitleScene, RocketEditorScene, GameScene] // シーンの配列（最初にEntryScene）
+            scene: [EntryScene, TitleScene, RocketEditorScene, GameScene], // シーンの配列（最初にEntryScene）
+            scale: {
+                mode: Phaser.Scale.FIT,
+                autoCenter: Phaser.Scale.CENTER_BOTH,
+                width: GameConfig.width,
+                height: GameConfig.height,
+                parent: 'game-container'
+            }
         };
         
         console.log('Game config:', config);

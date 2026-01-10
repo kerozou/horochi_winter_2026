@@ -72,8 +72,6 @@ export class TitleScene extends Phaser.Scene {
         // ビデオ要素を作成
         const video = document.createElement('video');
         video.src = videoPath;
-        video.width = width;
-        video.height = height;
         video.autoplay = autoplay;
         video.loop = loop;
         video.muted = muted;
@@ -82,22 +80,81 @@ export class TitleScene extends Phaser.Scene {
         video.playsInline = playsInline;
         video.style.position = 'absolute';
         video.style.pointerEvents = 'none'; // Phaserのイベントを妨げないように
+        video.style.zIndex = zIndex.toString();
+        // 位置計算が完了するまで非表示にする
+        video.style.opacity = '0';
+        video.style.visibility = 'hidden';
+        // フェードインのトランジション効果を設定
+        video.style.transition = 'opacity 0.5s ease-in';
         
-        // Phaserの座標系に合わせて配置
-        // Phaserのキャンバスは通常、game-container内に配置される
+        // 動画要素の位置とサイズを更新する関数
+        const updateVideoPosition = () => {
+            const gameContainer = document.getElementById('game-container');
+            if (!gameContainer) return;
+            
+            const game = this.game;
+            
+            if (game && game.scale && game.canvas) {
+                // Phaserのスケール情報を取得
+                const scaleX = game.scale.displaySize.width / game.scale.gameSize.width;
+                const scaleY = game.scale.displaySize.height / game.scale.gameSize.height;
+                
+                // キャンバスの位置を基準に計算（game-container内での相対位置）
+                const canvasRect = game.canvas.getBoundingClientRect();
+                const containerRect = gameContainer.getBoundingClientRect();
+                
+                // game-container内でのキャンバスの相対位置
+                const canvasOffsetX = canvasRect.left - containerRect.left;
+                const canvasOffsetY = canvasRect.top - containerRect.top;
+                
+                // Phaser座標系での位置を、game-container内の相対位置に変換
+                // これにより、ブラウザサイズが変わってもゲーム画面内の同じ位置（Phaser座標系）に表示される
+                video.style.left = (canvasOffsetX + x * scaleX) + 'px';
+                video.style.top = (canvasOffsetY + y * scaleY) + 'px';
+                video.style.width = (width * scaleX) + 'px';
+                video.style.height = (height * scaleY) + 'px';
+                
+                // 位置計算が完了したら表示する（次のフレームでトランジション開始）
+                requestAnimationFrame(() => {
+                    video.style.visibility = 'visible';
+                    requestAnimationFrame(() => {
+                        video.style.opacity = '1';
+                    });
+                });
+            } else {
+                // Phaserのスケール情報が取得できない場合は従来の方法
+                video.style.left = x + 'px';
+                video.style.top = y + 'px';
+                video.style.width = width + 'px';
+                video.style.height = height + 'px';
+                
+                // 位置計算が完了したら表示する（次のフレームでトランジション開始）
+                requestAnimationFrame(() => {
+                    video.style.visibility = 'visible';
+                    requestAnimationFrame(() => {
+                        video.style.opacity = '1';
+                    });
+                });
+            }
+        };
+        
+        // 初回配置
         const gameContainer = document.getElementById('game-container');
         if (gameContainer) {
-            const containerRect = gameContainer.getBoundingClientRect();
-            video.style.left = (containerRect.left + x) + 'px';
-            video.style.top = (containerRect.top + y) + 'px';
-            video.style.zIndex = zIndex.toString(); // オプションで指定されたz-indexを使用
             gameContainer.appendChild(video);
+            // 少し遅延させてPhaserのスケールが確定してから位置を計算
+            setTimeout(updateVideoPosition, 100);
+            // リサイズイベントに対応
+            window.addEventListener('resize', updateVideoPosition);
+            // リサイズリスナーを保存（クリーンアップ用）
+            video._resizeHandler = updateVideoPosition;
         } else {
             // game-containerが見つからない場合はbodyに追加
             document.body.appendChild(video);
             video.style.left = x + 'px';
             video.style.top = y + 'px';
-            video.style.zIndex = zIndex.toString();
+            video.style.width = width + 'px';
+            video.style.height = height + 'px';
         }
         
         // エラーハンドリング
@@ -119,6 +176,10 @@ export class TitleScene extends Phaser.Scene {
         // シーン終了時にクリーンアップ
         this.events.once('shutdown', () => {
             if (video.parentNode) {
+                // リサイズリスナーを削除
+                if (video._resizeHandler) {
+                    window.removeEventListener('resize', video._resizeHandler);
+                }
                 video.pause();
                 video.src = '';
                 video.load();
@@ -232,7 +293,7 @@ export class TitleScene extends Phaser.Scene {
         const subtitle = this.add.text(
             rightHalfCenterX,
             centerY - 80,
-            'かっこいいロケットを作って皆に自慢しよう！',
+            'ナウいロケットを作って皆に自慢しよう！',
             {
                 fontSize: '28px',
                 fill: '#ffffff',
