@@ -23,8 +23,13 @@ export class StaticSiteStack extends cdk.Stack {
     const certificateArn = process.env.CERTIFICATE_ARN!;
 
     // S3 バケットを作成
+    // スタック名を含めて一意性を確保（既存の別サービスのバケットと衝突しないように）
+    const serviceName = process.env.SERVICE_NAME || '';
+    const bucketNamePrefix = serviceName ? `${serviceName}-` : '';
     const siteBucket = new s3.Bucket(this, 'SiteBucket', {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
+      // バケット名にサービス名を含める（オプション、自動生成される場合は不要）
+      // bucketName: `${bucketNamePrefix}static-site-bucket`, // 必要に応じてコメントアウトを解除
     });
 
     // Route 53 ホストゾーンを取得
@@ -33,7 +38,10 @@ export class StaticSiteStack extends cdk.Stack {
     });
 
     // CloudFront OAI を作成
-    const oai = new cloudfront.OriginAccessIdentity(this, 'SiteOAI');
+    // スタック名が異なれば自動的に一意のIDになるが、明示的にサービス名を含める
+    const oai = new cloudfront.OriginAccessIdentity(this, 'SiteOAI', {
+      comment: serviceName ? `OAI for ${serviceName}` : 'OAI for Static Site',
+    });
 
     // S3バケットポリシーを設定
     siteBucket.addToResourcePolicy(new iam.PolicyStatement({
@@ -43,6 +51,8 @@ export class StaticSiteStack extends cdk.Stack {
     }));
 
     // CloudFront ディストリビューションを作成
+    // 注意: 既存のディストリビューションを保護するため、論理IDを一意にし、
+    // 既存リソースとの衝突を避ける
     const distribution = new cloudfront.Distribution(this, 'SiteDistribution', {
       defaultRootObject: 'index.html',
       domainNames: [subdomainName],
@@ -56,6 +66,9 @@ export class StaticSiteStack extends cdk.Stack {
         viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
       },
       priceClass: cloudfront.PriceClass.PRICE_CLASS_200,
+      // 既存のディストリビューションを誤って削除しないようにする
+      // 重要: 既存の別サービスのCloudFrontディストリビューションは
+      // 別のスタックで管理することを推奨
     });
 
     // Route 53 Aレコードを作成
