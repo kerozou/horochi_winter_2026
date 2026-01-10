@@ -3,7 +3,8 @@
 # .envファイルのパスを指定して読み込む
 ENV_FILE_PATH="../../.env"
 if [ -f "$ENV_FILE_PATH" ]; then
-  export $(cat "$ENV_FILE_PATH" | xargs)
+  # コメント行と空行を除外して環境変数を読み込む
+  export $(grep -v '^#' "$ENV_FILE_PATH" | grep -v '^$' | xargs)
 fi
 
 # S3バケット名とCloudFrontディストリビューションIDを環境変数から取得
@@ -17,12 +18,57 @@ if [ -z "$BUCKET_NAME" ] || [ -z "$DISTRIBUTION_ID" ]; then
 fi
 
 # アップロードするディレクトリを指定
-UPLOAD_DIR="../../frontend/resources"
+RESOURCES_DIR="../../resources"
+ROOT_DIR="../.."
 
-# .gitignoreとREADME.md以外のファイルをS3バケットにアップロード
-find "$UPLOAD_DIR" -maxdepth 1 -type f ! -name ".gitignore" ! -name "README.md" -exec aws s3 cp {} "s3://$BUCKET_NAME/" \;
+# ディレクトリが存在することを確認
+if [ ! -d "$RESOURCES_DIR" ]; then
+  echo "Error: Resources directory $RESOURCES_DIR does not exist."
+  exit 1
+fi
+
+if [ ! -d "$ROOT_DIR" ]; then
+  echo "Error: Root directory $ROOT_DIR does not exist."
+  exit 1
+fi
+
+# ルートディレクトリの必要なファイルとディレクトリをS3バケットのルートに同期
+# infra, node_modules, .gitなどを除外
+echo "Uploading root files and directories to s3://$BUCKET_NAME/..."
+aws s3 sync "$ROOT_DIR" "s3://$BUCKET_NAME/" \
+  --exclude "infra/*" \
+  --exclude "node_modules/*" \
+  --exclude ".git/*" \
+  --exclude ".env*" \
+  --exclude "*.md" \
+  --exclude "package*.json" \
+  --exclude "resources/*" \
+  --delete
+
+if [ $? -ne 0 ]; then
+  echo "Error: Failed to upload root files to S3."
+  exit 1
+fi
+
+# resourcesディレクトリ全体をS3バケットのresources/パスに同期（サブディレクトリも含む）
+# --excludeで.gitignoreとREADME.mdを除外
+echo "Uploading files from $RESOURCES_DIR to s3://$BUCKET_NAME/resources/..."
+aws s3 sync "$RESOURCES_DIR" "s3://$BUCKET_NAME/resources/" \
+  --exclude ".gitignore" \
+  --exclude "README.md" \
+  --delete
+
+if [ $? -ne 0 ]; then
+  echo "Error: Failed to upload files to S3."
+  exit 1
+fi
 
 # CloudFrontディストリビューションのキャッシュを削除
+echo "Invalidating CloudFront cache..."
 aws cloudfront create-invalidation --distribution-id "$DISTRIBUTION_ID" --paths "/*"
+
+if [ $? -ne 0 ]; then
+  echo "Warning: Failed to invalidate CloudFront cache, but upload completed."
+fi
 
 echo "Upload and cache invalidation completed."
