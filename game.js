@@ -1,3 +1,4 @@
+import { EntryScene } from './scenes/EntryScene.js';
 import { TitleScene } from './scenes/TitleScene.js';
 import { RocketEditorScene } from './scenes/RocketEditorScene.js';
 import { GameScene } from './scenes/GameScene.js';
@@ -40,7 +41,7 @@ import { GameConfig } from './config/gameConfig.js';
             parent: 'game-container',
             backgroundColor: GameConfig.backgroundColor,
             physics: GameConfig.physics,
-            scene: [TitleScene, RocketEditorScene, GameScene] // シーンの配列
+            scene: [EntryScene, TitleScene, RocketEditorScene, GameScene] // シーンの配列（最初にEntryScene）
         };
         
         console.log('Game config:', config);

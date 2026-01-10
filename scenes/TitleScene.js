@@ -252,6 +252,17 @@ export class TitleScene extends Phaser.Scene {
             }
         );
         
+        // クレジット表示ボタン
+        const creditButton = this.createButton(
+            rightHalfCenterX,
+            centerY + 130,
+            'クレジット',
+            () => {
+                console.log('Showing credits...');
+                this.showCredits();
+            }
+        );
+        
         // 操作説明
         const instructions = this.add.text(
             rightHalfCenterX,
@@ -589,10 +600,171 @@ export class TitleScene extends Phaser.Scene {
     }
     
     /**
+     * クレジットを表示
+     */
+    showCredits() {
+        const screenWidth = this.cameras.main.width;
+        const screenHeight = this.cameras.main.height;
+        const centerX = screenWidth / 2 + 300;
+        const centerY = screenHeight / 2;
+        
+        // 既にクレジットが表示されている場合は何もしない
+        if (this.creditOverlay) {
+            return;
+        }
+        
+        // オーバーレイ背景（半透明の黒）
+        const overlayBg = this.add.rectangle(
+            centerX,
+            centerY,
+            screenWidth + 5000,
+            screenHeight,
+            0x000000,
+            0.8
+        );
+        overlayBg.setInteractive();
+        overlayBg.setDepth(1000);
+        
+        // クレジットパネル
+        const panelWidth = 600;
+        const panelHeight = 500;
+        const creditPanel = this.add.container(centerX, centerY);
+        creditPanel.setDepth(1001);
+        
+        // パネル背景
+        const panelBg = this.add.rectangle(0, 0, panelWidth, panelHeight, 0x2c3e50);
+        panelBg.setStrokeStyle(3, 0xffffff);
+        
+        // タイトル
+        const creditTitle = this.add.text(0, -200, 'クレジット', {
+            fontSize: '32px',
+            fill: '#ffffff',
+            fontStyle: 'bold'
+        });
+        creditTitle.setOrigin(0.5);
+        
+        // クレジット内容
+        const creditText = this.add.text(0, 6, 
+            'ゲームデザイン・プログラマ:\n' +
+            ' ・ほろっち\n\n' +
+            'BGM:\n' +
+            ' ・ほろっち (タイトル・エディタ)\n' +
+            ' ・魔王魂 (ロケット発射)\n\n' +
+            '効果音:\n' +
+            ' ・効果音ラボ (SE)\n' +
+            ' ・COEIROINK:幌呂めぐる (CV)\n\n' +
+            'イラスト:\n' +
+            ' ・ほろっち: キャラクターイラスト・アニメーション\n' +
+            ' ・だれのき(@darenoki): エフェクト\n' +
+            ' ・sirousagi: ビル背景イラスト\n\n'+
+            'lib:\n' +
+            ' ・Phaser.js 3.80.1\n',
+            {
+                fontSize: '14px',
+                fill: '#ffffff',
+                align: 'leftr',
+                lineSpacing: 4
+            }
+        );
+        creditText.setOrigin(0.5);
+        
+        // 閉じるボタン
+        const closeButton = this.add.container(0, 200);
+        const closeBg = this.add.rectangle(0, 0, 200, 50, 0x4ecdc4);
+        closeBg.setStrokeStyle(2, 0xffffff);
+        const closeText = this.add.text(0, 0, '閉じる', {
+            fontSize: '24px',
+            fill: '#ffffff',
+            fontStyle: 'bold'
+        });
+        closeText.setOrigin(0.5);
+        closeButton.add([closeBg, closeText]);
+        closeButton.setSize(200, 50);
+        closeButton.setInteractive({ useHandCursor: true });
+        
+        // 閉じるボタンのホバー効果
+        closeButton.on('pointerover', () => {
+            closeBg.setFillStyle(0x3ab5dd);
+        });
+        closeButton.on('pointerout', () => {
+            closeBg.setFillStyle(0x4ecdc4);
+        });
+        
+        // 閉じるボタンのクリックイベント
+        closeButton.on('pointerdown', () => {
+            this.playButtonSound();
+            this.closeCredits();
+        });
+        
+        // オーバーレイ背景のクリックでも閉じる
+        overlayBg.on('pointerdown', () => {
+            this.closeCredits();
+        });
+        
+        creditPanel.add([panelBg, creditTitle, creditText, closeButton]);
+        
+        // 動画の透明度を50%に変更
+        if (this.videoElement) {
+            this.videoElement.style.transition = 'opacity 300ms ease-out';
+            this.videoElement.style.opacity = '0.5';
+        }
+        
+        // フェードインアニメーション
+        creditPanel.setAlpha(0);
+        overlayBg.setAlpha(0);
+        this.tweens.add({
+            targets: [creditPanel, overlayBg],
+            alpha: 1,
+            duration: 300,
+            ease: 'Power2'
+        });
+        
+        // 参照を保存
+        this.creditOverlay = {
+            overlayBg: overlayBg,
+            creditPanel: creditPanel
+        };
+    }
+    
+    /**
+     * クレジットを閉じる
+     */
+    closeCredits() {
+        if (!this.creditOverlay) {
+            return;
+        }
+        
+        // 動画の透明度を元に戻す（100%）
+        if (this.videoElement) {
+            this.videoElement.style.transition = 'opacity 300ms ease-out';
+            this.videoElement.style.opacity = '1.0';
+        }
+        
+        // フェードアウトアニメーション
+        this.tweens.add({
+            targets: [this.creditOverlay.creditPanel, this.creditOverlay.overlayBg],
+            alpha: 0,
+            duration: 300,
+            ease: 'Power2',
+            onComplete: () => {
+                // オブジェクトを削除
+                this.creditOverlay.creditPanel.destroy();
+                this.creditOverlay.overlayBg.destroy();
+                this.creditOverlay = null;
+            }
+        });
+    }
+    
+    /**
      * ロケットエディタへの遷移（動画も含めてフェードアウト）
      */
     transitionToEditor() {
         const fadeDuration = 500; // フェードアウトの時間（ミリ秒）
+        
+        // クレジットが表示されている場合は閉じる
+        if (this.creditOverlay) {
+            this.closeCredits();
+        }
         
         // Phaserのカメラをフェードアウト
         this.cameras.main.fadeOut(fadeDuration, 0, 0, 0);
@@ -614,6 +786,11 @@ export class TitleScene extends Phaser.Scene {
      */
     shutdown() {
         console.log('TitleScene: shutdown() called');
+        
+        // クレジットが表示されている場合は閉じる
+        if (this.creditOverlay) {
+            this.closeCredits();
+        }
         
         // 同じBGMを使うシーン（RocketEditorScene）に遷移する場合は停止しない
         // GameSceneに遷移する場合は、GameScene側で停止される
