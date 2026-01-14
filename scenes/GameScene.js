@@ -28,6 +28,10 @@ export class GameScene extends Phaser.Scene {
             console.log('GameScene initialized with default rocket');
         }
         
+        // ランクマッチモードかどうか
+        this.isRankMatch = data.isRankMatch || false;
+        this.rankMatchDate = data.dateString || null;
+        
         // トロフィーチェック用の統計データを初期化
         this.gameStats = {
             maxRotation: 0,        // 最大回転量（絶対値）
@@ -270,8 +274,8 @@ export class GameScene extends Phaser.Scene {
             console.log('Pointer down at:', pointer.x, pointer.y);
             if (this.rocket && !this.rocket.isLaunched) {
                 this.launchRocket(pointer);
-            } else if (this.rocket && this.rocket.isLaunched && !this.rocket.isCockpitSeparated) {
-                // ロケット発射後はチャージ開始
+            } else if (this.rocket && this.rocket.isLaunched && this.rocket.separationCount < 1) {
+                // ロケット発射後はチャージ開始（1回のみ分離可能）
                 this.isCharging = true;
                 this.separationCharge = 0;
             }
@@ -409,18 +413,20 @@ export class GameScene extends Phaser.Scene {
      * コックピット分離ゲージを更新
      */
     updateSeparationGauge() {
-        if (this.isCharging && this.rocket && this.rocket.isLaunched && !this.rocket.isCockpitSeparated) {
+        if (this.isCharging && this.rocket && this.rocket.isLaunched && this.rocket.separationCount < 1) {
             // ゲージを増加（1フレームあたり3%）
             this.separationCharge = Math.min(100, this.separationCharge + 3);
             
             // ゲージUIを更新（400ピクセル幅に変更）
-            this.separationGauge.width = (this.separationCharge / 100) * 400;
-            
-            // ゲージが満タンになったら色を変える
-            if (this.separationCharge >= 100) {
-                this.separationGauge.setFillStyle(0x00ff00); // 緑色
-            } else {
-                this.separationGauge.setFillStyle(0xff6b6b); // 赤色
+            if (this.separationGauge) {
+                this.separationGauge.width = (this.separationCharge / 100) * 400;
+                
+                // ゲージが満タンになったら色を変える
+                if (this.separationCharge >= 100) {
+                    this.separationGauge.setFillStyle(0x00ff00); // 緑色
+                } else {
+                    this.separationGauge.setFillStyle(0xff6b6b); // 赤色
+                }
             }
         }
     }
@@ -429,25 +435,38 @@ export class GameScene extends Phaser.Scene {
      * コックピット分離処理
      */
     separateCockpit() {
-        if (!this.rocket || !this.rocket.isLaunched || this.rocket.isCockpitSeparated) {
+        if (!this.rocket || !this.rocket.isLaunched) {
+            return;
+        }
+        
+        // 1回分離後は分離できない
+        if (this.rocket.separationCount >= 1) {
             return;
         }
         
         // ゲージが一定以上溜まっている場合のみ分離
         if (this.separationCharge >= 30) {
-            console.log('Separating cockpit with charge:', this.separationCharge);
+            console.log('Separating cockpit with charge:', this.separationCharge, 'Separation count:', this.rocket.separationCount);
             
             // ロケットのコックピットを分離
             this.rocket.separateCockpit(this.separationCharge);
             
             // ゲージをリセット
             this.separationCharge = 0;
-            this.separationGauge.width = 0;
             
-            // UIを非表示
-            this.separationText.setVisible(false);
-            this.separationGaugeBg.setVisible(false);
-            this.separationGauge.setVisible(false);
+            // UIを削除（非表示ではなく完全に削除）
+            if (this.separationText) {
+                this.separationText.destroy();
+                this.separationText = null;
+            }
+            if (this.separationGaugeBg) {
+                this.separationGaugeBg.destroy();
+                this.separationGaugeBg = null;
+            }
+            if (this.separationGauge) {
+                this.separationGauge.destroy();
+                this.separationGauge = null;
+            }
             
             // 状態テキストを更新
             if (this.statusText) {
@@ -560,6 +579,53 @@ export class GameScene extends Phaser.Scene {
      * タイトルに戻るボタンを作成
      */
     createBackButton() {
+        // ランクマッチモードの場合はRankMatchSceneに戻る
+        if (this.isRankMatch) {
+            const backButton = this.add.text(
+                -1000,
+                -700,
+                '◀ ランクマッチへ',
+                {
+                    fontSize: '50px',
+                    fill: '#ffffff',
+                    backgroundColor: 'rgba(231, 76, 60, 0.8)',
+                    padding: { x: 30, y: 15 },
+                    fontStyle: 'bold'
+                }
+            );
+            backButton.setDepth(100);
+            backButton.setScrollFactor(0);
+            backButton.setInteractive({ useHandCursor: true });
+            
+            backButton.on('pointerover', () => {
+                backButton.setStyle({ backgroundColor: 'rgba(192, 57, 43, 0.9)' });
+            });
+            
+            backButton.on('pointerout', () => {
+                backButton.setStyle({ backgroundColor: 'rgba(231, 76, 60, 0.8)' });
+            });
+            
+            backButton.on('pointerdown', () => {
+                console.log('Returning to rank match...');
+                
+                // 名前入力UIを強制的に削除
+                this.removeNameInputUI();
+                
+                // ボタンクリック時の効果音を再生
+                this.playButtonSound();
+                
+                // すべての音声を停止
+                this.stopAllSounds();
+                
+                this.cameras.main.fadeOut(500, 0, 0, 0);
+                this.cameras.main.once('camerafadeoutcomplete', () => {
+                    this.scene.start('RankMatchScene');
+                });
+            });
+            return;
+        }
+        
+        // 通常モードの場合はTitleSceneに戻る
         const backButton = this.add.text(
             -1000,
             -700,
@@ -586,6 +652,9 @@ export class GameScene extends Phaser.Scene {
         
         backButton.on('pointerdown', () => {
             console.log('Returning to title...');
+            
+            // 名前入力UIを強制的に削除
+            this.removeNameInputUI();
             
             // ボタンクリック時の効果音を再生
             this.playButtonSound();
@@ -1183,11 +1252,11 @@ export class GameScene extends Phaser.Scene {
             
             // 「着陸成功！」テキスト
             const gameOverText = this.add.text(
-                screenCenterX,
-                screenCenterY - 180,
+                screenCenterX - 850,
+                screenCenterY - 480,
                 '着陸成功！',
                 {
-                    fontSize: '72px',
+                    fontSize: '144px',
                     fill: '#ffff00',
                     fontStyle: 'bold',
                     stroke: '#000000',
@@ -1200,11 +1269,11 @@ export class GameScene extends Phaser.Scene {
             
             // 飛距離を大きく表示（メインリザルト）
             const distanceResultText = this.add.text(
-                screenCenterX,
-                screenCenterY - 50,
+                screenCenterX - 850,
+                screenCenterY - 250,
                 `${finalDistance} m`,
                 {
-                    fontSize: '120px',
+                    fontSize: '260px',
                     fill: '#00ff00',
                     fontStyle: 'bold',
                     stroke: '#000000',
@@ -1215,30 +1284,13 @@ export class GameScene extends Phaser.Scene {
             distanceResultText.setScrollFactor(0);
             distanceResultText.setDepth(300);
             
-            // // 「飛距離」ラベル
-            // const distanceLabel = this.add.text(
-            //     screenCenterX,
-            //     screenCenterY - 120,
-            //     '飛距離',
-            //     {
-            //         fontSize: '48px',
-            //         fill: '#ffffff',
-            //         fontStyle: 'bold',
-            //         backgroundColor: 'rgba(0, 0, 0, 0.7)',
-            //         padding: { x: 20, y: 10 }
-            //     }
-            // );
-            // distanceLabel.setOrigin(0.5);
-            // distanceLabel.setScrollFactor(0);
-            // distanceLabel.setDepth(300);
-            
             // 着地速度（サブ情報）
             const speedText = this.add.text(
-                screenCenterX,
-                screenCenterY + 80,
+                screenCenterX - 850,
+                screenCenterY - 20,
                 `着地速度: ${finalSpeedKmh} km/h`,
                 {
-                    fontSize: '36px',
+                    fontSize: '72px',
                     fill: '#ffffff',
                     fontStyle: 'bold',
                     backgroundColor: 'rgba(0, 0, 0, 0.7)',
@@ -1248,6 +1300,14 @@ export class GameScene extends Phaser.Scene {
             speedText.setOrigin(0.5);
             speedText.setScrollFactor(0);
             speedText.setDepth(300);
+            
+            // 名前入力UIを表示
+            this.showNameInput(finalDistance);
+            
+            // 再発射ボタンを表示（ランクマッチモードの場合は表示しない）
+            if (!this.isRankMatch) {
+                this.showRetryButton();
+            }
         }
         
         // キーボード操作の案内は削除
@@ -1326,13 +1386,13 @@ export class GameScene extends Phaser.Scene {
             // ゲーム統計を記録
             this.updateGameStats();
             
-            // コックピット分離UIの表示/非表示
+            // コックピット分離UIの表示/非表示（1回のみ分離可能）
             const hasCockpit = this.rocket.hasCockpit();
-            if (hasCockpit && !this.rocket.isCockpitSeparated) {
+            if (hasCockpit && this.rocket.separationCount < 1 && this.separationText && this.separationGaugeBg && this.separationGauge) {
                 this.separationText.setVisible(true);
                 this.separationGaugeBg.setVisible(true);
                 this.separationGauge.setVisible(true);
-            } else {
+            } else if (this.separationText && this.separationGaugeBg && this.separationGauge) {
                 this.separationText.setVisible(false);
                 this.separationGaugeBg.setVisible(false);
                 this.separationGauge.setVisible(false);
@@ -1380,6 +1440,344 @@ export class GameScene extends Phaser.Scene {
     /**
      * トロフィーをチェックして解除
      */
+    /**
+     * 名前入力UIを表示
+     */
+    showNameInput(finalDistance) {
+        const screenWidth = this.cameras.main.width;
+        const screenHeight = this.cameras.main.height;
+        const screenCenterX = screenWidth / 2;
+        const screenCenterY = screenHeight / 2;
+        
+        // // オーバーレイ背景（半透明の黒）
+        // const overlayBg = this.add.rectangle(
+        //     screenCenterX + 600,
+        //     screenCenterY - 1500,
+        //     screenWidth,
+        //     screenHeight,
+        //     0x000000,
+        //     0.7
+        // );
+        // overlayBg.setDepth(400);
+        
+        // 名前入力パネル（画面中央に大きく表示）
+        // テキストとボタンはスクリーン座標（固定座標）で表示
+        const panelWidth = 1400;
+        const panelHeight = 900;
+        
+        // タイトル（スクリーン座標で固定）
+        const titleText = this.add.text(screenCenterX + 500, screenCenterY - 450, 'ランキングに登録', {
+            fontSize: '128px',
+            fill: '#ffffff',
+            fontStyle: 'bold'
+        });
+        titleText.setOrigin(0.5);
+        titleText.setScrollFactor(0); // スクリーン座標に固定
+        titleText.setDepth(401);
+        
+        // 説明文（スクリーン座標で固定）
+        const instructionText = this.add.text(screenCenterX + 500, screenCenterY - 250, 'アルファベット5文字で名前を入力', {
+            fontSize: '64px',
+            fill: '#ffffff'
+        });
+        instructionText.setOrigin(0.5);
+        instructionText.setScrollFactor(0); // スクリーン座標に固定
+        instructionText.setDepth(401);
+        
+        // HTMLのinput要素を作成
+        const gameContainer = document.getElementById('game-container');
+        if (gameContainer) {
+            const canvasRect = this.game.canvas.getBoundingClientRect();
+            const containerRect = gameContainer.getBoundingClientRect();
+            
+            const scaleX = this.game.scale.displaySize.width / this.game.scale.gameSize.width;
+            const scaleY = this.game.scale.displaySize.height / this.game.scale.gameSize.height;
+            const canvasOffsetX = canvasRect.left - containerRect.left;
+            const canvasOffsetY = canvasRect.top - containerRect.top;
+            
+            // 入力フィールドの位置をスクリーン座標に合わせる（説明文の下）
+            const inputX = canvasOffsetX + (screenCenterX + 30) * scaleX;
+            const inputY = canvasOffsetY + (screenCenterY - 30) * scaleY;
+            
+            const nameInput = document.createElement('input');
+            nameInput.type = 'text';
+            nameInput.maxLength = 5;
+            nameInput.style.position = 'absolute';
+            nameInput.style.left = inputX + 'px';
+            nameInput.style.top = inputY + 'px';
+            nameInput.style.width = (300 * scaleX) + 'px';
+            nameInput.style.height = (50 * scaleY) + 'px';
+            nameInput.style.fontSize = (32 * scaleX) + 'px';
+            nameInput.style.textAlign = 'center';
+            nameInput.style.textTransform = 'uppercase';
+            nameInput.style.border = '3px solid #ffffff';
+            nameInput.style.borderRadius = '5px';
+            nameInput.style.backgroundColor = '#1a1a2e';
+            nameInput.style.color = '#ffffff';
+            nameInput.style.zIndex = '402';
+            nameInput.value = 'MGR01';
+            nameInput.placeholder = 'MGR01';
+            
+            // アルファベットのみ入力可能にする
+            nameInput.addEventListener('input', (e) => {
+                e.target.value = e.target.value.replace(/[^A-Za-z]/g, '').toUpperCase().substring(0, 5);
+            });
+            
+            // Enterキーで確定
+            nameInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    this.submitName(finalDistance, nameInput.value || 'AAA');
+                }
+            });
+            
+            gameContainer.appendChild(nameInput);
+            nameInput.focus();
+            nameInput.select();
+            
+            // 確定ボタン（スクリーン座標で固定）
+            const submitButtonX = screenCenterX + 500;
+            const submitButtonY = screenCenterY + 250;
+            const submitButton = this.add.container(submitButtonX, submitButtonY);
+            const submitBg = this.add.rectangle(0, 0, 400, 100, 0x4ecdc4);
+            submitBg.setStrokeStyle(2, 0xffffff);
+            const submitText = this.add.text(0, 0, '確定', {
+                fontSize: '96px',
+                fill: '#ffffff',
+                fontStyle: 'bold'
+            });
+            submitText.setOrigin(0.5);
+            submitButton.add([submitBg, submitText]);
+            submitButton.setSize(400, 100);
+            submitButton.setInteractive({ useHandCursor: true });
+            submitButton.setScrollFactor(0); // スクリーン座標に固定
+            submitButton.setDepth(401);
+            
+            // 確定ボタンのホバー効果
+            submitButton.on('pointerover', () => {
+                submitBg.setFillStyle(0x3ab5dd);
+            });
+            submitButton.on('pointerout', () => {
+                submitBg.setFillStyle(0x4ecdc4);
+            });
+            
+            // 確定ボタンのクリックイベント
+            submitButton.on('pointerdown', () => {
+                // deci.mp3を音量50%で再生
+                if (this.cache.audio.exists('deci')) {
+                    this.sound.play('deci', {
+                        volume: 0.5
+                    });
+                }
+                this.submitName(finalDistance, nameInput.value || 'MGR01');
+            });
+            
+            // 参照を保存（クリーンアップ用）
+            this.nameInputOverlay = {
+                titleText: titleText,
+                instructionText: instructionText,
+                submitButton: submitButton,
+                nameInput: nameInput
+            };
+        }
+    }
+    
+    /**
+     * 再発射ボタンを表示
+     */
+    showRetryButton() {
+        const screenWidth = this.cameras.main.width;
+        const screenHeight = this.cameras.main.height;
+        const screenCenterX = screenWidth / 2;
+        const buttonY = screenHeight - 100; // 画面下部から100px上
+        
+        // 再発射ボタン（スクリーン座標で固定）
+        const retryButton = this.add.container(screenCenterX, buttonY);
+        const retryBg = this.add.rectangle(0, 0, 400, 80, 0x4ecdc4);
+        retryBg.setStrokeStyle(2, 0xffffff);
+        const retryText = this.add.text(0, 0, '再発射', {
+            fontSize: '48px',
+            fill: '#ffffff',
+            fontStyle: 'bold'
+        });
+        retryText.setOrigin(0.5);
+        retryButton.add([retryBg, retryText]);
+        retryButton.setSize(400, 80);
+        retryButton.setInteractive({ useHandCursor: true });
+        retryButton.setScrollFactor(0); // スクリーン座標に固定
+        retryButton.setDepth(402);
+        
+        // 再発射ボタンのホバー効果
+        retryButton.on('pointerover', () => {
+            retryBg.setFillStyle(0x3ab5dd);
+        });
+        retryButton.on('pointerout', () => {
+            retryBg.setFillStyle(0x4ecdc4);
+        });
+        
+        // 再発射ボタンのクリックイベント
+        retryButton.on('pointerdown', () => {
+            // 名前入力UIを強制的に削除
+            this.removeNameInputUI();
+            
+            // deci.mp3を音量50%で再生
+            if (this.cache.audio.exists('deci')) {
+                this.sound.play('deci', {
+                    volume: 0.5
+                });
+            }
+            
+            // 同じロケット構成でGameSceneを再起動
+            const rocketDesignData = this.rocketDesign ? this.rocketDesign.toJSON() : null;
+            this.scene.start('GameScene', { rocketDesign: rocketDesignData });
+        });
+        
+        // 参照を保存（クリーンアップ用）
+        if (!this.nameInputOverlay) {
+            this.nameInputOverlay = {};
+        }
+        this.nameInputOverlay.retryButton = retryButton;
+    }
+    
+    /**
+     * 名前入力UIを強制的に削除
+     */
+    removeNameInputUI() {
+        if (this.nameInputOverlay) {
+            // HTMLのinput要素を削除
+            if (this.nameInputOverlay.nameInput && this.nameInputOverlay.nameInput.parentNode) {
+                this.nameInputOverlay.nameInput.parentNode.removeChild(this.nameInputOverlay.nameInput);
+            }
+            // Phaserのテキストとボタンを削除
+            if (this.nameInputOverlay.titleText) {
+                this.nameInputOverlay.titleText.destroy();
+            }
+            if (this.nameInputOverlay.instructionText) {
+                this.nameInputOverlay.instructionText.destroy();
+            }
+            if (this.nameInputOverlay.submitButton) {
+                this.nameInputOverlay.submitButton.destroy();
+            }
+            if (this.nameInputOverlay.retryButton) {
+                this.nameInputOverlay.retryButton.destroy();
+            }
+            this.nameInputOverlay = null;
+        }
+    }
+    
+    /**
+     * 名前を確定してランキングに保存
+     */
+    submitName(distance, name) {
+        // 名前を正規化（アルファベットのみ、大文字、最大5文字）
+        // 入力されていない文字は埋めない
+        const normalizedName = name.toUpperCase().replace(/[^A-Z]/g, '').substring(0, 5);
+        this.lastEnteredName = normalizedName; // トロフィーチェック用に保存
+        
+        // ランキングに保存
+        this.saveDistanceToRanking(distance, normalizedName);
+        
+        // ランクマッチでのメダル獲得トロフィーをチェック（ランキング保存後）
+        if (this.isRankMatch && this.rankMatchDate) {
+            this.checkRankMatchMedalTrophies(distance, normalizedName);
+        }
+        
+        // 名前入力UIを削除
+        this.removeNameInputUI();
+    }
+    
+    /**
+     * ランクマッチでのメダル獲得トロフィーをチェック
+     */
+    checkRankMatchMedalTrophies(distance, name) {
+        const rankingKey = `rankMatchRanking_${this.rankMatchDate}`;
+        const ranking = JSON.parse(localStorage.getItem(rankingKey) || '[]');
+        const sortedRanking = [...ranking].sort((a, b) => b.distance - a.distance);
+        
+        // 現在の記録の順位を確認
+        const currentRecordIndex = sortedRanking.findIndex(r => 
+            Math.abs(r.distance - distance) < 0.01 && 
+            r.name === name
+        );
+        
+        const trophies = this.getNewTrophyList();
+        const existing = localStorage.getItem('unlockedTrophies');
+        const unlockedList = existing ? JSON.parse(existing) : [];
+        
+        // メダル獲得（3位以内）
+        if (currentRecordIndex >= 0 && currentRecordIndex < 3) {
+            const medalTrophy = trophies.find(t => t.id === 'trophy_7');
+            if (medalTrophy && !unlockedList.includes(medalTrophy.id)) {
+                unlockedList.push(medalTrophy.id);
+                localStorage.setItem('unlockedTrophies', JSON.stringify(unlockedList));
+                console.log('Trophy unlocked: trophy_7 (Rank Match Medal)');
+            }
+        }
+        
+        // 金メダル獲得（1位）
+        if (currentRecordIndex === 0) {
+            const goldMedalTrophy = trophies.find(t => t.id === 'trophy_10');
+            if (goldMedalTrophy && !unlockedList.includes(goldMedalTrophy.id)) {
+                unlockedList.push(goldMedalTrophy.id);
+                localStorage.setItem('unlockedTrophies', JSON.stringify(unlockedList));
+                console.log('Trophy unlocked: trophy_10 (Rank Match Gold Medal)');
+            }
+        }
+    }
+    
+    /**
+     * 距離をランキングに保存
+     */
+    saveDistanceToRanking(distance, name = 'AAA') {
+        try {
+            // ランクマッチモードの場合は日付ベースでランキングを保存
+            if (this.isRankMatch && this.rankMatchDate) {
+                const rankingKey = `rankMatchRanking_${this.rankMatchDate}`;
+                const existingRanking = JSON.parse(localStorage.getItem(rankingKey) || '[]');
+                
+                const newRecord = {
+                    distance: distance,
+                    name: name.toUpperCase().replace(/[^A-Z]/g, '').substring(0, 5),
+                    date: new Date().toISOString()
+                };
+                
+                existingRanking.push(newRecord);
+                existingRanking.sort((a, b) => b.distance - a.distance);
+                const top10 = existingRanking.slice(0, 10);
+                
+                localStorage.setItem(rankingKey, JSON.stringify(top10));
+                console.log('Rank match distance saved:', distance, 'm', 'Name:', newRecord.name, 'Date:', this.rankMatchDate);
+                return;
+            }
+            
+            // 通常モードの場合は通常のランキングに保存
+            const rankingKey = 'distanceRanking';
+            const existingRanking = JSON.parse(localStorage.getItem(rankingKey) || '[]');
+            
+            // 新しい記録を追加（日付と名前も保存）
+            // 名前は入力された文字のみを保存（最大5文字、大文字）
+            const newRecord = {
+                distance: distance,
+                name: name.toUpperCase().replace(/[^A-Z]/g, '').substring(0, 5),
+                date: new Date().toISOString()
+            };
+            
+            existingRanking.push(newRecord);
+            
+            // 距離でソート（降順）
+            existingRanking.sort((a, b) => b.distance - a.distance);
+            
+            // 上位10件のみ保持
+            const top10 = existingRanking.slice(0, 10);
+            
+            // localStorageに保存
+            localStorage.setItem(rankingKey, JSON.stringify(top10));
+            
+            console.log('Distance saved to ranking:', distance, 'm', 'Name:', newRecord.name);
+        } catch (error) {
+            console.error('Error saving distance to ranking:', error);
+        }
+    }
+    
     checkAndUnlockTrophies(finalDistance, finalSpeedKmh) {
         console.log('Checking trophies...');
         console.log('Distance:', finalDistance, 'm');
@@ -1393,7 +1791,7 @@ export class GameScene extends Phaser.Scene {
         console.log('Play count:', playCount);
         
         // トロフィーデータを生成（TrophySceneと同じロジック）
-        const trophies = this.generateTrophiesForCheck();
+        const trophies = this.getNewTrophyList();
         
         // 各トロフィーをチェック
         trophies.forEach(trophy => {
@@ -1456,6 +1854,13 @@ export class GameScene extends Phaser.Scene {
                        this.gameStats.maxSpeed >= trophy.minSpeed &&
                        finalDistance >= trophy.threshold) {
                 unlocked = true;
+            } else if (trophy.condition === 'negativeDistance' &&
+                       finalDistance <= trophy.threshold) {
+                unlocked = true;
+            } else if (trophy.condition === 'rankMatchMedal' || trophy.condition === 'rankMatchGoldMedal') {
+                // ランクマッチでのメダル獲得チェックはsubmitName内で実行されるため、ここではスキップ
+                // （ランキング保存後にチェックする必要があるため）
+                unlocked = false;
             }
             
             if (unlocked) {
@@ -1472,7 +1877,65 @@ export class GameScene extends Phaser.Scene {
     }
     
     /**
-     * トロフィーチェック用のトロフィーデータを生成
+     * 新しいトロフィーリストを取得（TrophySceneと同じ）
+     */
+    getNewTrophyList() {
+        return [
+            {
+                id: 'trophy_1',
+                condition: 'playCount',
+                threshold: 1
+            },
+            {
+                id: 'trophy_2',
+                condition: 'distance',
+                threshold: 20000
+            },
+            {
+                id: 'trophy_3',
+                condition: 'distance',
+                threshold: 30000
+            },
+            {
+                id: 'trophy_4',
+                condition: 'distance',
+                threshold: 50000
+            },
+            {
+                id: 'trophy_5',
+                condition: 'playCount',
+                threshold: 10
+            },
+            {
+                id: 'trophy_6',
+                condition: 'playCount',
+                threshold: 100
+            },
+            {
+                id: 'trophy_7',
+                condition: 'rankMatchMedal',
+                threshold: 3
+            },
+            {
+                id: 'trophy_8',
+                condition: 'distance',
+                threshold: 100000
+            },
+            {
+                id: 'trophy_9',
+                condition: 'negativeDistance',
+                threshold: -20000
+            },
+            {
+                id: 'trophy_10',
+                condition: 'rankMatchGoldMedal',
+                threshold: 1
+            }
+        ];
+    }
+    
+    /**
+     * トロフィーチェック用のトロフィーデータを生成（旧実装、互換性のため残す）
      */
     generateTrophiesForCheck() {
         const trophies = [];
@@ -1780,6 +2243,9 @@ export class GameScene extends Phaser.Scene {
      */
     shutdown() {
         console.log('GameScene: shutdown() called - cleaning up');
+        
+        // 名前入力UIをクリーンアップ
+        this.removeNameInputUI();
         
         // BGMを停止
         this.stopBGM();

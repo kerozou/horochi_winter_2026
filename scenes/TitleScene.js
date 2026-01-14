@@ -277,7 +277,7 @@ export class TitleScene extends Phaser.Scene {
         // 右半分にタイトルロゴ
         const title = this.add.text(
             rightHalfCenterX,
-            centerY - 150,
+            centerY - 300,
             'ほろっちの冬休み',
             {
                 fontSize: '64px',
@@ -292,7 +292,7 @@ export class TitleScene extends Phaser.Scene {
         // サブタイトル
         const subtitle = this.add.text(
             rightHalfCenterX,
-            centerY - 80,
+            centerY - 230,
             'ナウいロケットを作って皆に自慢しよう！',
             {
                 fontSize: '28px',
@@ -301,28 +301,86 @@ export class TitleScene extends Phaser.Scene {
             }
         );
         subtitle.setOrigin(0.5);
+
+        
+        // ランクマッチボタン
+        const rankMatchButton = this.createButton(
+            rightHalfCenterX,
+            centerY - 80,
+            '⚔️ ランクマッチ',
+            () => {
+                console.log('Transitioning to Rank Match Scene...');
+                this.transitionToRankMatchScene();
+            }
+        );
         
         // スタートボタン
         const startButton = this.createButton(
             rightHalfCenterX,
-            centerY + 50,
-            'ロケットエディタへ',
+            centerY,
+            '🧭 限界スコアモード',
             () => {
                 console.log('Starting Rocket Editor...');
                 this.transitionToEditor();
             }
         );
         
-        // クレジット表示ボタン
-        const creditButton = this.createButton(
+        // ランキング表示ボタン
+        const rankingButton = this.createButton(
             rightHalfCenterX,
-            centerY + 130,
-            'クレジット',
+            centerY + 80,
+            '👑 ランキング',
             () => {
-                console.log('Showing credits...');
-                this.showCredits();
+                console.log('Showing ranking...');
+                this.showRanking();
             }
         );
+        
+        // トロフィーボタン
+        const trophyButton = this.createButton(
+            rightHalfCenterX,
+            centerY + 160,
+            '🏆 トロフィー',
+            () => {
+                console.log('Transitioning to Trophy Scene...');
+                this.transitionToTrophyScene();
+            }
+        );
+        
+        // クレジット表示ボタン（小さい正方形、画面右下）
+        const creditButtonSize = 50; // 正方形のサイズ
+        const creditButton = this.add.container(screenWidth - creditButtonSize - 10, screenHeight - creditButtonSize - 10);
+        
+        // ボタン背景（正方形）
+        const creditBg = this.add.rectangle(0, 0, creditButtonSize, creditButtonSize, 0x4ecdc4);
+        creditBg.setStrokeStyle(2, 0xffffff);
+        
+        // ボタンテキスト（「i」アイコンまたは「ク」の文字）
+        const creditText = this.add.text(0, 0, 'i', {
+            fontSize: '32px',
+            fill: '#ffffff',
+            fontStyle: 'bold'
+        });
+        creditText.setOrigin(0.5);
+        
+        creditButton.add([creditBg, creditText]);
+        creditButton.setSize(creditButtonSize, creditButtonSize);
+        creditButton.setInteractive({ useHandCursor: true });
+        
+        // ホバー効果
+        creditButton.on('pointerover', () => {
+            creditBg.setFillStyle(0x3ab5dd);
+        });
+        creditButton.on('pointerout', () => {
+            creditBg.setFillStyle(0x4ecdc4);
+        });
+        
+        // クリックイベント
+        creditButton.on('pointerdown', () => {
+            this.playButtonSound();
+            console.log('Showing credits...');
+            this.showCredits();
+        });
         
         // 操作説明
         const instructions = this.add.text(
@@ -788,6 +846,375 @@ export class TitleScene extends Phaser.Scene {
     }
     
     /**
+     * ランキングを表示（左側: ランクマッチ、右側: 距離ランキング）
+     */
+    showRanking() {
+        const screenWidth = this.cameras.main.width;
+        const screenHeight = this.cameras.main.height;
+        const centerX = screenWidth / 2;
+        const centerY = screenHeight / 2;
+        
+        // 既にランキングが表示されている場合は何もしない
+        if (this.rankingOverlay) {
+            return;
+        }
+        
+        // オーバーレイ背景（半透明の黒）
+        const overlayBg = this.add.rectangle(
+            centerX,
+            centerY,
+            screenWidth,
+            screenHeight,
+            0x000000,
+            0.8
+        );
+        overlayBg.setInteractive();
+        overlayBg.setDepth(1000);
+        
+        // 今日の日付を取得
+        const today = this.getTodayDateString();
+        
+        // 左側: ランクマッチランキングパネル
+        const leftPanelX = screenWidth / 4;
+        const leftPanelY = centerY;
+        const leftPanelWidth = 500;
+        const leftPanelHeight = 500;
+        const leftRankMatchPanel = this.add.container(leftPanelX, leftPanelY);
+        leftRankMatchPanel.setDepth(1001);
+        
+        // 左パネル背景
+        const leftPanelBg = this.add.rectangle(0, 0, leftPanelWidth, leftPanelHeight, 0x2c3e50);
+        leftPanelBg.setStrokeStyle(3, 0xffffff);
+        
+        // 左パネルタイトル
+        const leftPanelTitle = this.add.text(0, -200, '⚔️ ランクマッチ', {
+            fontSize: '28px',
+            fill: '#ffffff',
+            fontStyle: 'bold'
+        });
+        leftPanelTitle.setOrigin(0.5);
+        
+        // 日付表示
+        const leftDateText = this.add.text(0, -170, today, {
+            fontSize: '16px',
+            fill: '#bdc3c7'
+        });
+        leftDateText.setOrigin(0.5);
+        
+        // ランクマッチランキングデータを取得
+        const rankMatchKey = `rankMatchRanking_${today}`;
+        const rankMatchRanking = JSON.parse(localStorage.getItem(rankMatchKey) || '[]');
+        
+        // ランクマッチランキング内容（個別のテキストとして表示）
+        const rankMatchItems = [];
+        if (rankMatchRanking.length === 0) {
+            const noRecordText = this.add.text(0, 0, 'まだ記録がありません\n\nランクマッチで\n記録を残しましょう！', {
+                fontSize: '16px',
+                fill: '#bdc3c7',
+                align: 'center'
+            });
+            noRecordText.setOrigin(0.5);
+            rankMatchItems.push(noRecordText);
+        } else {
+            const startY = -100;
+            const itemSpacing = 35; // 1~3位は大きく表示するため間隔を広げる
+            const normalItemSpacing = 20; // 4位以降の間隔
+            
+            rankMatchRanking.slice(0, 10).forEach((record, index) => {
+                const rank = index + 1;
+                const distance = record.distance;
+                // 名前を5文字にパディング（後ろにスペースを追加）
+                const name = (record.name || 'AAA').padEnd(5, ' ');
+                const date = new Date(record.date);
+                const dateStr = `${date.getMonth() + 1}/${date.getDate()} ${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`;
+                
+                // 1~3位は大きく表示、4位以降は通常サイズ
+                const isTop3 = rank <= 3;
+                const fontSize = isTop3 ? '24px' : '16px';
+                const nameFontSize = isTop3 ? '22px' : '16px';
+                const distanceFontSize = isTop3 ? '20px' : '14px';
+                
+                // Y座標を計算（1~3位は大きく、4位以降は通常サイズ）
+                let y = startY;
+                if (rank <= 3) {
+                    y = startY + (rank - 1) * itemSpacing;
+                } else {
+                    y = startY + 3 * itemSpacing + (rank - 4) * normalItemSpacing;
+                }
+                
+                // メダル表示
+                let medal = '';
+                if (rank === 1) medal = '🥇';
+                else if (rank === 2) medal = '🥈';
+                else if (rank === 3) medal = '🥉';
+                else medal = `${rank}.`;
+                
+                // メダル/ランク表示
+                const medalText = this.add.text(-200, y, medal, {
+                    fontSize: isTop3 ? '36px' : '20px',
+                    fill: '#ffffff',
+                    fontStyle: 'bold'
+                });
+                medalText.setOrigin(0, 0.5);
+                rankMatchItems.push(medalText);
+                
+                // ユーザー名（左側に配置）
+                const nameY = y; // 名前と飛距離を同じ高さに
+                const nameText = this.add.text(-150, nameY, name, {
+                    fontSize: nameFontSize,
+                    fill: '#ffffff',
+                    fontStyle: 'bold'
+                });
+                nameText.setOrigin(0, 0.5);
+                rankMatchItems.push(nameText);
+                
+                // 飛距離（名前の後ろに余白を設けて配置）
+                const nameWidth = nameText.width; // 名前の幅を取得
+                const spacing = isTop3 ? 30 : 20; // 1~3位は余白を広めに
+                const distanceX = -150 + nameWidth + spacing;
+                const distanceText = this.add.text(distanceX, nameY, `${distance.toLocaleString()} m`, {
+                    fontSize: distanceFontSize,
+                    fill: '#3498db',
+                    fontStyle: 'bold'
+                });
+                distanceText.setOrigin(0, 0.5);
+                rankMatchItems.push(distanceText);
+                
+                // 日時（すべての順位に表示）
+                const distanceWidth = distanceText.width; // 飛距離の幅を取得
+                const dateSpacing = isTop3 ? 20 : 15; // 1~3位は余白を広めに
+                const dateX = distanceX + distanceWidth + dateSpacing;
+                const dateText = this.add.text(dateX, y, `(${dateStr})`, {
+                    fontSize: isTop3 ? '14px' : '12px',
+                    fill: '#bdc3c7'
+                });
+                dateText.setOrigin(0, 0.5);
+                rankMatchItems.push(dateText);
+            });
+        }
+        
+        leftRankMatchPanel.add([leftPanelBg, leftPanelTitle, leftDateText, ...rankMatchItems]);
+        
+        // 右側: 距離ランキングパネル
+        const rightPanelX = screenWidth * 3 / 4;
+        const rightPanelY = centerY;
+        const rightPanelWidth = 500;
+        const rightPanelHeight = 500;
+        const rightDistancePanel = this.add.container(rightPanelX, rightPanelY);
+        rightDistancePanel.setDepth(1001);
+        
+        // 右パネル背景
+        const rightPanelBg = this.add.rectangle(0, 0, rightPanelWidth, rightPanelHeight, 0x2c3e50);
+        rightPanelBg.setStrokeStyle(3, 0xffffff);
+        
+        // 右パネルタイトル
+        const rightPanelTitle = this.add.text(0, -200, '🧭 限界スコアランキング', {
+            fontSize: '28px',
+            fill: '#ffffff',
+            fontStyle: 'bold'
+        });
+        rightPanelTitle.setOrigin(0.5);
+        
+        // 距離ランキングデータを取得
+        const distanceRankingKey = 'distanceRanking';
+        const distanceRanking = JSON.parse(localStorage.getItem(distanceRankingKey) || '[]');
+        
+        // 距離ランキング内容（個別のテキストとして表示）
+        const distanceItems = [];
+        if (distanceRanking.length === 0) {
+            const noRecordText = this.add.text(0, 0, 'まだ記録がありません\n\nロケットを飛ばして\n記録を残しましょう！', {
+                fontSize: '16px',
+                fill: '#bdc3c7',
+                align: 'center'
+            });
+            noRecordText.setOrigin(0.5);
+            distanceItems.push(noRecordText);
+        } else {
+            const startY = -100;
+            const itemSpacing = 35; // 1~3位は大きく表示するため間隔を広げる
+            const normalItemSpacing = 20; // 4位以降の間隔
+            
+            distanceRanking.forEach((record, index) => {
+                const rank = index + 1;
+                const distance = record.distance;
+                // 名前を5文字にパディング（後ろにスペースを追加）
+                const name = (record.name || 'AAA').padEnd(5, ' ');
+                const date = new Date(record.date);
+                const dateStr = `${date.getMonth() + 1}/${date.getDate()} ${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`;
+                
+                // 1~3位は大きく表示、4位以降は通常サイズ
+                const isTop3 = rank <= 3;
+                const fontSize = isTop3 ? '24px' : '16px';
+                const nameFontSize = isTop3 ? '22px' : '16px';
+                const distanceFontSize = isTop3 ? '20px' : '14px';
+                
+                // Y座標を計算（1~3位は大きく、4位以降は通常サイズ）
+                let y = startY;
+                if (rank <= 3) {
+                    y = startY + (rank - 1) * itemSpacing;
+                } else {
+                    y = startY + 3 * itemSpacing + (rank - 4) * normalItemSpacing;
+                }
+                
+                // メダル表示
+                let medal = '';
+                if (rank === 1) medal = '🥇';
+                else if (rank === 2) medal = '🥈';
+                else if (rank === 3) medal = '🥉';
+                else medal = `${rank}.`;
+                
+                // メダル/ランク表示
+                const medalText = this.add.text(-200, y, medal, {
+                    fontSize: isTop3 ? '36px' : '20px',
+                    fill: '#ffffff',
+                    fontStyle: 'bold'
+                });
+                medalText.setOrigin(0, 0.5);
+                distanceItems.push(medalText);
+                
+                // ユーザー名（左側に配置）
+                const nameY = y; // 名前と飛距離を同じ高さに
+                const nameText = this.add.text(-150, nameY, name, {
+                    fontSize: nameFontSize,
+                    fill: '#ffffff',
+                    fontStyle: 'bold'
+                });
+                nameText.setOrigin(0, 0.5);
+                distanceItems.push(nameText);
+                
+                // 飛距離（名前の後ろに余白を設けて配置）
+                const nameWidth = nameText.width; // 名前の幅を取得
+                const spacing = isTop3 ? 30 : 20; // 1~3位は余白を広めに
+                const distanceX = -150 + nameWidth + spacing;
+                const distanceText = this.add.text(distanceX, nameY, `${distance.toLocaleString()} m`, {
+                    fontSize: distanceFontSize,
+                    fill: '#3498db',
+                    fontStyle: 'bold'
+                });
+                distanceText.setOrigin(0, 0.5);
+                distanceItems.push(distanceText);
+                
+                // 日時（すべての順位に表示）
+                const distanceWidth = distanceText.width; // 飛距離の幅を取得
+                const dateSpacing = isTop3 ? 20 : 15; // 1~3位は余白を広めに
+                const dateX = distanceX + distanceWidth + dateSpacing;
+                const dateText = this.add.text(dateX, y, `(${dateStr})`, {
+                    fontSize: isTop3 ? '14px' : '12px',
+                    fill: '#bdc3c7'
+                });
+                dateText.setOrigin(0, 0.5);
+                distanceItems.push(dateText);
+            });
+        }
+        
+        rightDistancePanel.add([rightPanelBg, rightPanelTitle, ...distanceItems]);
+        
+        // 閉じるボタン（中央下部）
+        const closeButton = this.add.container(centerX, centerY + 250);
+        const closeBg = this.add.rectangle(0, 0, 200, 50, 0x4ecdc4);
+        closeBg.setStrokeStyle(2, 0xffffff);
+        const closeText = this.add.text(0, 0, '閉じる', {
+            fontSize: '24px',
+            fill: '#ffffff',
+            fontStyle: 'bold'
+        });
+        closeText.setOrigin(0.5);
+        closeButton.add([closeBg, closeText]);
+        closeButton.setSize(200, 50);
+        closeButton.setInteractive({ useHandCursor: true });
+        closeButton.setDepth(1002);
+        
+        // 閉じるボタンのホバー効果
+        closeButton.on('pointerover', () => {
+            closeBg.setFillStyle(0x3ab5dd);
+        });
+        closeButton.on('pointerout', () => {
+            closeBg.setFillStyle(0x4ecdc4);
+        });
+        
+        // 閉じるボタンのクリックイベント
+        closeButton.on('pointerdown', () => {
+            this.playButtonSound();
+            this.closeRanking();
+        });
+        
+        // オーバーレイ背景のクリックでも閉じる
+        overlayBg.on('pointerdown', () => {
+            this.closeRanking();
+        });
+        
+        // 動画を一時的に非表示にする
+        if (this.videoElement) {
+            this.videoElement.style.transition = 'opacity 300ms ease-out';
+            this.videoElement.style.opacity = '0';
+            this.videoElement.style.visibility = 'hidden';
+        }
+        
+        // フェードインアニメーション
+        leftRankMatchPanel.setAlpha(0);
+        rightDistancePanel.setAlpha(0);
+        closeButton.setAlpha(0);
+        overlayBg.setAlpha(0);
+        this.tweens.add({
+            targets: [leftRankMatchPanel, rightDistancePanel, closeButton, overlayBg],
+            alpha: 1,
+            duration: 300,
+            ease: 'Power2'
+        });
+        
+        // 参照を保存
+        this.rankingOverlay = {
+            overlayBg: overlayBg,
+            leftRankMatchPanel: leftRankMatchPanel,
+            rightDistancePanel: rightDistancePanel,
+            closeButton: closeButton
+        };
+    }
+    
+    /**
+     * 今日の日付を文字列で取得（YYYY-MM-DD形式）
+     */
+    getTodayDateString() {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    }
+    
+    /**
+     * ランキングを閉じる
+     */
+    closeRanking() {
+        if (!this.rankingOverlay) {
+            return;
+        }
+        
+        // 動画を復活させる
+        if (this.videoElement) {
+            this.videoElement.style.transition = 'opacity 300ms ease-in';
+            this.videoElement.style.visibility = 'visible';
+            this.videoElement.style.opacity = '1.0';
+        }
+        
+        // フェードアウトアニメーション
+        this.tweens.add({
+            targets: [this.rankingOverlay.leftRankMatchPanel, this.rankingOverlay.rightDistancePanel, this.rankingOverlay.closeButton, this.rankingOverlay.overlayBg],
+            alpha: 0,
+            duration: 300,
+            ease: 'Power2',
+            onComplete: () => {
+                // オブジェクトを削除
+                this.rankingOverlay.leftRankMatchPanel.destroy();
+                this.rankingOverlay.rightDistancePanel.destroy();
+                this.rankingOverlay.closeButton.destroy();
+                this.rankingOverlay.overlayBg.destroy();
+                this.rankingOverlay = null;
+            }
+        });
+    }
+    
+    /**
      * クレジットを閉じる
      */
     closeCredits() {
@@ -817,10 +1244,77 @@ export class TitleScene extends Phaser.Scene {
     }
     
     /**
+     * トロフィー画面への遷移
+     */
+    transitionToTrophyScene() {
+        const fadeDuration = 500;
+        
+        // ランキングが表示されている場合は閉じる
+        if (this.rankingOverlay) {
+            this.closeRanking();
+        }
+        
+        // クレジットが表示されている場合は閉じる
+        if (this.creditOverlay) {
+            this.closeCredits();
+        }
+        
+        // Phaserのカメラをフェードアウト
+        this.cameras.main.fadeOut(fadeDuration, 0, 0, 0);
+        
+        // 動画要素もフェードアウト
+        if (this.videoElement) {
+            this.videoElement.style.transition = `opacity ${fadeDuration}ms ease-out`;
+            this.videoElement.style.opacity = '0';
+        }
+        
+        // フェードアウト完了後にシーン遷移
+        this.cameras.main.once('camerafadeoutcomplete', () => {
+            this.scene.start('TrophyScene');
+        });
+    }
+    
+    /**
+     * ランクマッチ画面への遷移
+     */
+    transitionToRankMatchScene() {
+        const fadeDuration = 500;
+        
+        // ランキングが表示されている場合は閉じる
+        if (this.rankingOverlay) {
+            this.closeRanking();
+        }
+        
+        // クレジットが表示されている場合は閉じる
+        if (this.creditOverlay) {
+            this.closeCredits();
+        }
+        
+        // Phaserのカメラをフェードアウト
+        this.cameras.main.fadeOut(fadeDuration, 0, 0, 0);
+        
+        // 動画要素もフェードアウト
+        if (this.videoElement) {
+            this.videoElement.style.transition = `opacity ${fadeDuration}ms ease-out`;
+            this.videoElement.style.opacity = '0';
+        }
+        
+        // フェードアウト完了後にシーン遷移
+        this.cameras.main.once('camerafadeoutcomplete', () => {
+            this.scene.start('RankMatchScene');
+        });
+    }
+    
+    /**
      * ロケットエディタへの遷移（動画も含めてフェードアウト）
      */
     transitionToEditor() {
         const fadeDuration = 500; // フェードアウトの時間（ミリ秒）
+        
+        // ランキングが表示されている場合は閉じる
+        if (this.rankingOverlay) {
+            this.closeRanking();
+        }
         
         // クレジットが表示されている場合は閉じる
         if (this.creditOverlay) {
@@ -847,6 +1341,11 @@ export class TitleScene extends Phaser.Scene {
      */
     shutdown() {
         console.log('TitleScene: shutdown() called');
+        
+        // ランキングが表示されている場合は閉じる
+        if (this.rankingOverlay) {
+            this.closeRanking();
+        }
         
         // クレジットが表示されている場合は閉じる
         if (this.creditOverlay) {
