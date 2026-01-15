@@ -345,6 +345,9 @@ export class RankMatchScene extends Phaser.Scene {
         const cellSize = 80;
         const gridCols = 5;
         
+        // パレットセルを保存する配列
+        this.paletteCells = [];
+        
         // パレットタイトル
         this.add.text(startX + (gridCols * cellSize) / 2, startY - 30, '今日のパーツ', {
             fontSize: '24px',
@@ -359,7 +362,7 @@ export class RankMatchScene extends Phaser.Scene {
             const x = startX + col * cellSize;
             const y = startY + row * cellSize;
             
-            this.createGridPaletteItem(x, y, compositePart, cellSize);
+            this.createGridPaletteItem(x, y, compositePart, cellSize, index);
         });
         
         // パーツ詳細パネルを作成
@@ -369,7 +372,7 @@ export class RankMatchScene extends Phaser.Scene {
     /**
      * グリッド形式のパレットアイテムを作成
      */
-    createGridPaletteItem(x, y, compositePart, cellSize) {
+    createGridPaletteItem(x, y, compositePart, cellSize, index) {
         // チェッカーフラッグ風の背景色
         const col = Math.floor((x - 700) / cellSize);
         const row = Math.floor((y - 200) / cellSize);
@@ -395,24 +398,55 @@ export class RankMatchScene extends Phaser.Scene {
         
         // ホバー効果
         cell.on('pointerover', () => {
-            cell.setFillStyle(0x3498db);
-            cell.setStrokeStyle(3, 0x5dade2);
+            if (!cell._isUsed) {
+                cell.setFillStyle(0x3498db);
+                cell.setStrokeStyle(3, 0x5dade2);
+            }
             this.updatePartDetailPanel(compositePart);
         });
         
         cell.on('pointerout', () => {
-            cell.setFillStyle(bgColor);
-            cell.setStrokeStyle(2, 0x3498db);
+            if (!cell._isUsed) {
+                cell.setFillStyle(bgColor);
+                cell.setStrokeStyle(2, 0x3498db);
+            }
         });
         
         // クリックで選択
         cell.on('pointerdown', () => {
-            this.addCompositePartToBuildArea(compositePart);
+            if (!cell._isUsed) {
+                this.addCompositePartToBuildArea(compositePart, index);
+            }
         });
         
         // パーツ情報を保存
         cell.compositePart = compositePart;
         cell._iconText = iconText;
+        cell._bgColor = bgColor;
+        cell._isUsed = false;
+        cell._index = index;
+        
+        // パレットセルを保存
+        this.paletteCells[index] = cell;
+    }
+    
+    /**
+     * パレットセルをグレーアウト
+     */
+    setPartUsed(index, used) {
+        const cell = this.paletteCells[index];
+        if (!cell) return;
+        
+        cell._isUsed = used;
+        if (used) {
+            cell.setFillStyle(0x555555);
+            cell.setStrokeStyle(2, 0x666666);
+            cell._iconText.setStyle({ fill: '#666666' });
+        } else {
+            cell.setFillStyle(cell._bgColor);
+            cell.setStrokeStyle(2, 0x3498db);
+            cell._iconText.setStyle({ fill: '#3498db' });
+        }
     }
     
     /**
@@ -490,7 +524,7 @@ export class RankMatchScene extends Phaser.Scene {
     /**
      * 複合パーツを組み立てエリアに追加
      */
-    addCompositePartToBuildArea(compositePart) {
+    addCompositePartToBuildArea(compositePart, paletteIndex) {
         // 組み立てエリアの中心位置
         const centerX = this.buildArea.x + this.buildArea.width / 2;
         const centerY = this.buildArea.y + this.buildArea.height / 2;
@@ -508,8 +542,14 @@ export class RankMatchScene extends Phaser.Scene {
             groupId: groupId,
             parts: parts,
             sprite: groupContainer,
-            compositeName: compositeName
+            compositeName: compositeName,
+            paletteIndex: paletteIndex
         });
+        
+        // パレットセルをグレーアウト
+        if (paletteIndex !== undefined) {
+            this.setPartUsed(paletteIndex, true);
+        }
         
         // 各パーツを設計データに追加
         parts.forEach(part => {
@@ -710,6 +750,11 @@ export class RankMatchScene extends Phaser.Scene {
         const index = this.placedParts.findIndex(p => p.groupId === groupId);
         if (index !== -1) {
             const placedPart = this.placedParts[index];
+            
+            // パレットセルを再度有効化
+            if (placedPart.paletteIndex !== undefined) {
+                this.setPartUsed(placedPart.paletteIndex, false);
+            }
             
             // 設計データからも削除
             placedPart.parts.forEach(part => {

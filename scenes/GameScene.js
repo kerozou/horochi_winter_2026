@@ -32,6 +32,14 @@ export class GameScene extends Phaser.Scene {
         this.isRankMatch = data.isRankMatch || false;
         this.rankMatchDate = data.dateString || null;
         
+        // アイリスアウト関連フラグをリセット
+        this.isIrisOutStarted = false;
+        this.isIrisOutComplete = false;
+        this.irisGraphics = null;
+        this.irisAnimData = null;
+        this.irisMaxRadius = null;
+        this.irisCockpitSprite = null;
+        
         // トロフィーチェック用の統計データを初期化
         this.gameStats = {
             maxRotation: 0,        // 最大回転量（絶対値）
@@ -116,6 +124,16 @@ export class GameScene extends Phaser.Scene {
         if (!this.textures.exists('smoke') && !this.textures.exists('smokeTemp')) {
             this.load.image('smokeTemp', 'resources/smoke.png');
         }
+        
+        // リザルト表示用の画像を読み込む
+        if (!this.textures.exists('iei')) {
+            this.load.image('iei', 'resources/iei.png');
+        }
+        
+        // 新記録時の画像を読み込む
+        if (!this.textures.exists('horonbia')) {
+            this.load.image('horonbia', 'resources/horonbia.jpg');
+        }
     }
     
     create() {
@@ -153,9 +171,14 @@ export class GameScene extends Phaser.Scene {
             this.trajectoryGraphics = null;
             this.separationCharge = 0;
             this.isCharging = false;
+            this.wasAt100Percent = false; // 前のフレームで100%だったかどうか
+            this.justReached100Percent = false; // このフレームで100%に達したかどうか
             this.separationGauge = null;
             this.separationGaugeBg = null;
             this.separationText = null;
+            this.separationPowerText = null; // 出力強度表示テキスト
+            this.justmeetVideoElement = null; // justmeet.mp4動画要素
+            this.isJustmeetPlaying = false; // justmeet動画が再生中かどうか
             this.isCameraFollowing = false;
             this.cameraFollowThreshold = null;
             this.ground = null; // 地面
@@ -278,6 +301,8 @@ export class GameScene extends Phaser.Scene {
                 // ロケット発射後はチャージ開始（1回のみ分離可能）
                 this.isCharging = true;
                 this.separationCharge = 0;
+                this.wasAt100Percent = false; // チャージ開始時にリセット
+                this.justReached100Percent = false; // チャージ開始時にリセット
             }
         });
         
@@ -382,11 +407,11 @@ export class GameScene extends Phaser.Scene {
         this.separationText.setScrollFactor(0);
         this.separationText.setVisible(false);
         
-        // ゲージ背景
+        // ゲージ背景（長さを2倍: 400 → 800）
         this.separationGaugeBg = this.add.rectangle(
             uiX,
             uiY,
-            400,
+            800,
             60,
             0x333333
         );
@@ -395,9 +420,9 @@ export class GameScene extends Phaser.Scene {
         this.separationGaugeBg.setScrollFactor(0);
         this.separationGaugeBg.setVisible(false);
         
-        // ゲージ本体
+        // ゲージ本体（初期位置を2倍に調整: uiX - 200 → uiX - 400）
         this.separationGauge = this.add.rectangle(
-            uiX - 200,
+            uiX - 400,
             uiY,
             0,
             52,
@@ -407,6 +432,24 @@ export class GameScene extends Phaser.Scene {
         this.separationGauge.setDepth(101);
         this.separationGauge.setScrollFactor(0);
         this.separationGauge.setVisible(false);
+        
+        // 出力強度表示テキスト
+        this.separationPowerText = this.add.text(
+            uiX,
+            uiY + 65,
+            '出力強度: 0%',
+            {
+                fontSize: '56px',
+                fill: '#ffffff',
+                fontStyle: 'bold',
+                backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                padding: { x: 10, y: 5 }
+            }
+        );
+        this.separationPowerText.setOrigin(0.5);
+        this.separationPowerText.setDepth(102);
+        this.separationPowerText.setScrollFactor(0);
+        this.separationPowerText.setVisible(false);
     }
     
     /**
@@ -414,19 +457,36 @@ export class GameScene extends Phaser.Scene {
      */
     updateSeparationGauge() {
         if (this.isCharging && this.rocket && this.rocket.isLaunched && this.rocket.separationCount < 1) {
-            // ゲージを増加（1フレームあたり3%）
-            this.separationCharge = Math.min(100, this.separationCharge + 3);
+            // ゲージを増加（1フレームあたり2%の速度）
+            const previousCharge = this.separationCharge;
+            this.separationCharge = Math.min(100, this.separationCharge + 2);
             
-            // ゲージUIを更新（400ピクセル幅に変更）
+            // ゲージUIを更新（800ピクセル幅：2倍の長さ）
             if (this.separationGauge) {
-                this.separationGauge.width = (this.separationCharge / 100) * 400;
+                this.separationGauge.width = (this.separationCharge / 100) * 800;
                 
-                // ゲージが満タンになったら色を変える
-                if (this.separationCharge >= 100) {
+                // 100%に達した瞬間（前のフレームが98~99%で、現在が100%）のみ緑色
+                // それ以外（100%のまま1フレーム経過した後など）は赤色
+                if (this.separationCharge >= 98 && previousCharge < 100) {
+                    // 100%に達した瞬間：緑色
                     this.separationGauge.setFillStyle(0x00ff00); // 緑色
+                    this.justReached100Percent = true; // このフレームで100%に達した
+                    this.wasAt100Percent = true; // 次のフレームで赤に戻すためのフラグ
                 } else {
+                    // 100%に達した後、または100%未満：赤色
                     this.separationGauge.setFillStyle(0xff6b6b); // 赤色
+                    this.justReached100Percent = false; // 100%に達した瞬間ではない
+                    if (this.separationCharge >= 100) {
+                        this.wasAt100Percent = true; // 100%のまま継続
+                    } else {
+                        this.wasAt100Percent = false; // 100%未満に戻った
+                    }
                 }
+            }
+            
+            // 出力強度テキストを更新
+            if (this.separationPowerText) {
+                this.separationPowerText.setText(`出力強度: ${Math.round(this.separationCharge)}%`);
             }
         }
     }
@@ -448,11 +508,50 @@ export class GameScene extends Phaser.Scene {
         if (this.separationCharge >= 30) {
             console.log('Separating cockpit with charge:', this.separationCharge, 'Separation count:', this.rocket.separationCount);
             
-            // ロケットのコックピットを分離
-            this.rocket.separateCockpit(this.separationCharge);
+            // 推進力倍率を計算
+            // 基本推進力 = 出力強度 + 100%
+            let thrustMultiplier = (this.separationCharge / 100) + 1.0;
+            
+            // 100%に達した瞬間（このフレームで100%に達した）のみ追加で100%の推進力を得る
+            // 100%のまま1フレーム経過した後は追加推進力なし
+            const isPerfectSeparation = this.justReached100Percent;
+            if (isPerfectSeparation) {
+                thrustMultiplier += 1;
+            }
+            
+            console.log('Thrust multiplier:', thrustMultiplier, 'Charge:', this.separationCharge);
+            
+            // ロケットのコックピットを分離（推進力倍率を渡す）
+            this.rocket.separateCockpit(this.separationCharge, thrustMultiplier);
+            
+            // 分離結果を画面下部に表示
+            const colorText = isPerfectSeparation ? '緑' : '赤';
+            const colorValue = isPerfectSeparation ? '#00ff00' : '#ff0000';
+            this.separationResultText = this.add.text(
+                this.cameras.main.width / 2 + 1400,
+                this.cameras.main.height + 750,
+                `出力: ${Math.floor(this.separationCharge)}%  判定: ${colorText}`,
+                {
+                    fontSize: '64px',
+                    fill: colorValue,
+                    fontStyle: 'bold',
+                    stroke: '#000000',
+                    strokeThickness: 4
+                }
+            );
+            this.separationResultText.setOrigin(0.5);
+            this.separationResultText.setScrollFactor(0);
+            this.separationResultText.setDepth(100);
+            
+            // 緑のゲージ（100%到達）で分離成功した場合、cutin.mp4を再生
+            if (isPerfectSeparation) {
+                this.playJustmeetVideo();
+            }
             
             // ゲージをリセット
             this.separationCharge = 0;
+            this.wasAt100Percent = false; // リセット
+            this.justReached100Percent = false; // リセット
             
             // UIを削除（非表示ではなく完全に削除）
             if (this.separationText) {
@@ -466,6 +565,10 @@ export class GameScene extends Phaser.Scene {
             if (this.separationGauge) {
                 this.separationGauge.destroy();
                 this.separationGauge = null;
+            }
+            if (this.separationPowerText) {
+                this.separationPowerText.destroy();
+                this.separationPowerText = null;
             }
             
             // 状態テキストを更新
@@ -493,6 +596,165 @@ export class GameScene extends Phaser.Scene {
         } else {
             console.log('Not enough charge to separate cockpit:', this.separationCharge);
         }
+    }
+    
+    /**
+     * justmeet.mp4を再生（緑のゲージで分離成功時）
+     */
+    playJustmeetVideo() {
+        // 既に再生中の場合は何もしない
+        if (this.isJustmeetPlaying) {
+            return;
+        }
+        
+        this.isJustmeetPlaying = true;
+        
+        // ゲームを一時停止
+        if (this.matter && this.matter.world) {
+            this.matter.world.pause();
+        }
+        
+        const screenWidth = this.cameras.main.width;
+        const screenHeight = this.cameras.main.height;
+        
+        // 動画要素を作成（全画面）
+        const gameContainer = document.getElementById('game-container');
+        if (!gameContainer) {
+            console.error('game-container not found');
+            this.resumeGameAfterJustmeet();
+            return;
+        }
+        
+        const video = document.createElement('video');
+        video.src = 'resources/cutin.mp4';
+        video.autoplay = true;
+        video.loop = false;
+        video.muted = false;
+        video.volume = 1.0;
+        video.controls = false;
+        video.playsInline = true;
+        video.style.position = 'absolute';
+        video.style.pointerEvents = 'auto'; // クリック可能にする
+        video.style.zIndex = '1000'; // 高いz-index
+        video.style.opacity = '0';
+        video.style.visibility = 'hidden';
+        video.style.transition = 'opacity 0.5s ease-out';
+        
+        // 動画の位置とサイズを設定（全画面）
+        const updateVideoPosition = () => {
+            const game = this.game;
+            if (game && game.scale && game.canvas) {
+                const scaleX = game.scale.displaySize.width / game.scale.gameSize.width;
+                const scaleY = game.scale.displaySize.height / game.scale.gameSize.height;
+                
+                const canvasRect = game.canvas.getBoundingClientRect();
+                const containerRect = gameContainer.getBoundingClientRect();
+                
+                const canvasOffsetX = canvasRect.left - containerRect.left;
+                const canvasOffsetY = canvasRect.top - containerRect.top;
+                
+                // 全画面表示
+                video.style.left = (canvasOffsetX) + 'px';
+                video.style.top = (canvasOffsetY) + 'px';
+                video.style.width = (screenWidth * scaleX) + 'px';
+                video.style.height = (screenHeight * scaleY) + 'px';
+                
+                requestAnimationFrame(() => {
+                    video.style.visibility = 'visible';
+                    requestAnimationFrame(() => {
+                        video.style.opacity = '1';
+                    });
+                });
+            } else {
+                video.style.left = '0px';
+                video.style.top = '0px';
+                video.style.width = screenWidth + 'px';
+                video.style.height = screenHeight + 'px';
+                
+                requestAnimationFrame(() => {
+                    video.style.visibility = 'visible';
+                    requestAnimationFrame(() => {
+                        video.style.opacity = '1';
+                    });
+                });
+            }
+        };
+        
+        gameContainer.appendChild(video);
+        this.justmeetVideoElement = video;
+        
+        // リサイズイベントに対応
+        const resizeHandler = () => updateVideoPosition();
+        window.addEventListener('resize', resizeHandler);
+        video._resizeHandler = resizeHandler;
+        
+        // 位置を更新
+        setTimeout(updateVideoPosition, 100);
+        
+        // 動画の読み込み完了後に再生
+        video.addEventListener('loadeddata', () => {
+            video.play().catch(e => {
+                console.error('Error playing justmeet video:', e);
+            });
+        });
+        
+        // クリックイベント
+        const handleClick = () => {
+            // フェードアウトして削除
+            video.style.transition = 'opacity 0.5s ease-out';
+            video.style.opacity = '0';
+            
+            setTimeout(() => {
+                this.removeJustmeetVideo();
+                this.resumeGameAfterJustmeet();
+            }, 500);
+        };
+        
+        video.addEventListener('click', handleClick);
+        
+        // 動画終了時も自動的に削除（念のため）
+        video.addEventListener('ended', () => {
+            if (this.isJustmeetPlaying) {
+                handleClick();
+            }
+        });
+    }
+    
+    /**
+     * justmeet動画を削除
+     */
+    removeJustmeetVideo() {
+        if (this.justmeetVideoElement) {
+            // リサイズリスナーを削除
+            if (this.justmeetVideoElement._resizeHandler) {
+                window.removeEventListener('resize', this.justmeetVideoElement._resizeHandler);
+            }
+            
+            // 動画を停止して削除
+            this.justmeetVideoElement.pause();
+            this.justmeetVideoElement.src = '';
+            this.justmeetVideoElement.load();
+            
+            if (this.justmeetVideoElement.parentNode) {
+                this.justmeetVideoElement.parentNode.removeChild(this.justmeetVideoElement);
+            }
+            
+            this.justmeetVideoElement = null;
+        }
+        
+        this.isJustmeetPlaying = false;
+    }
+    
+    /**
+     * justmeet動画再生後にゲームを再開
+     */
+    resumeGameAfterJustmeet() {
+        // ゲームを再開
+        if (this.matter && this.matter.world) {
+            this.matter.world.resume();
+        }
+        
+        this.isJustmeetPlaying = false;
     }
     
     /**
@@ -619,6 +881,8 @@ export class GameScene extends Phaser.Scene {
                 
                 this.cameras.main.fadeOut(500, 0, 0, 0);
                 this.cameras.main.once('camerafadeoutcomplete', () => {
+                    // 遷移直前に再度削除を確認
+                    this.removeNameInputUI();
                     this.scene.start('RankMatchScene');
                 });
             });
@@ -653,7 +917,7 @@ export class GameScene extends Phaser.Scene {
         backButton.on('pointerdown', () => {
             console.log('Returning to title...');
             
-            // 名前入力UIを強制的に削除
+            // 名前入力UIを強制的に削除（遷移前に確実に削除）
             this.removeNameInputUI();
             
             // ボタンクリック時の効果音を再生
@@ -664,6 +928,8 @@ export class GameScene extends Phaser.Scene {
             
             this.cameras.main.fadeOut(500, 0, 0, 0);
             this.cameras.main.once('camerafadeoutcomplete', () => {
+                // 遷移直前に再度削除を確認
+                this.removeNameInputUI();
                 this.scene.start('TitleScene');
             });
         });
@@ -731,6 +997,8 @@ export class GameScene extends Phaser.Scene {
         // 分離ゲージをリセット
         this.separationCharge = 0;
         this.isCharging = false;
+        this.wasAt100Percent = false; // リセット
+        this.justReached100Percent = false; // リセット
         if (this.separationGauge) {
             this.separationGauge.width = 0;
         }
@@ -742,6 +1010,9 @@ export class GameScene extends Phaser.Scene {
         }
         if (this.separationGauge) {
             this.separationGauge.setVisible(false);
+        }
+        if (this.separationPowerText) {
+            this.separationPowerText.setVisible(false);
         }
         
         // スピードメーターをリセット
@@ -1195,12 +1466,100 @@ export class GameScene extends Phaser.Scene {
             return;
         }
         
-        // 射出地点のY座標を基準（0m）として、コックピットがそれ以下になったら終了
+        // 射出地点のY座標を基準（0m）として
         const cockpitY = cockpitSprite.y;
         const groundY = this.launchPoint.y; // 射出地点を0mとする
+        const altitude = groundY - cockpitY; // 高度（正の値が上）
+        const velocityY = cockpitSprite.body.velocity.y;
         
-        if (cockpitY >= groundY) {
+        // 高度500m以下、かつ下方向へ速度を持っている場合にアイリスアウト開始
+        if (!this.isIrisOutStarted && altitude <= 500 && velocityY > 0) {
+            this.isIrisOutStarted = true;
+            this.startIrisOutEffect(cockpitSprite);
+        }
+        
+        // アイリスアウト中はコックピットを追従して更新
+        if (this.isIrisOutStarted && !this.isIrisOutComplete) {
+            this.updateIrisOut();
+        }
+        
+        // 地面に到達したら終了（100px上で判定）
+        if (cockpitY >= groundY - 100) {
             this.gameOver();
+        }
+    }
+    
+    /**
+     * アイリスアウト演出を開始
+     */
+    startIrisOutEffect(cockpitSprite) {
+        const screenWidth = this.cameras.main.width;
+        const screenHeight = this.cameras.main.height;
+        const maxRadius = Math.sqrt(screenWidth * screenWidth + screenHeight * screenHeight);
+        
+        // アイリスアウト用のグラフィックス
+        const irisGraphics = this.add.graphics();
+        irisGraphics.setDepth(500);
+        irisGraphics.setScrollFactor(0);
+        this.irisGraphics = irisGraphics;
+        
+        // アニメーション用オブジェクト
+        this.irisAnimData = { radius: maxRadius };
+        this.irisMaxRadius = maxRadius;
+        this.irisCockpitSprite = cockpitSprite;
+        
+        // アイリスアウトアニメーション
+        this.tweens.add({
+            targets: this.irisAnimData,
+            radius: 0,
+            duration: 2000,
+            ease: 'Power2',
+            onComplete: () => {
+                this.isIrisOutComplete = true;
+            }
+        });
+    }
+    
+    /**
+     * アイリスアウトを更新（コックピットを追従）
+     */
+    updateIrisOut() {
+        if (!this.irisGraphics || !this.irisCockpitSprite) return;
+        
+        const screenWidth = this.cameras.main.width;
+        const screenHeight = this.cameras.main.height;
+        const camX = this.cameras.main.scrollX;
+        const camY = this.cameras.main.scrollY;
+        
+        // コックピットのスクリーン座標
+        const cockpitScreenX = this.irisCockpitSprite.x - camX;
+        const cockpitScreenY = this.irisCockpitSprite.y - camY;
+        
+        const r = this.irisAnimData.radius;
+        
+        this.irisGraphics.clear();
+        this.irisGraphics.fillStyle(0x000000, 1);
+        
+        // 外側から円形に黒く染める（三角形で構成）
+        const segments = 64;
+        const outerRadius = this.irisMaxRadius * 2;
+        
+        for (let i = 0; i < segments; i++) {
+            const angle1 = (i / segments) * Math.PI * 2;
+            const angle2 = ((i + 1) / segments) * Math.PI * 2;
+            
+            const x1 = cockpitScreenX + Math.cos(angle1) * r;
+            const y1 = cockpitScreenY + Math.sin(angle1) * r;
+            const x2 = cockpitScreenX + Math.cos(angle2) * r;
+            const y2 = cockpitScreenY + Math.sin(angle2) * r;
+            const x3 = cockpitScreenX + Math.cos(angle1) * outerRadius;
+            const y3 = cockpitScreenY + Math.sin(angle1) * outerRadius;
+            const x4 = cockpitScreenX + Math.cos(angle2) * outerRadius;
+            const y4 = cockpitScreenY + Math.sin(angle2) * outerRadius;
+            
+            // 2つの三角形で扇形を描画
+            this.irisGraphics.fillTriangle(x1, y1, x3, y3, x4, y4);
+            this.irisGraphics.fillTriangle(x1, y1, x4, y4, x2, y2);
         }
     }
     
@@ -1231,12 +1590,6 @@ export class GameScene extends Phaser.Scene {
         // 物理演算を停止
         this.matter.world.pause();
         
-        // カメラの位置に関係なく、画面中央に表示
-        const screenCenterX = this.cameras.main.width / 2;
-        const screenCenterY = this.cameras.main.height / 2;
-        
-        // リザルト表示（飛距離を中心に大きく表示）
-        
         const cockpitSprite = this.rocket.separatedCockpitSprites[0];
         if (cockpitSprite && cockpitSprite.body) {
             const velocityX = cockpitSprite.body.velocity.x;
@@ -1250,72 +1603,138 @@ export class GameScene extends Phaser.Scene {
             // トロフィーをチェック
             this.checkAndUnlockTrophies(finalDistance, finalSpeedKmh);
             
-            // 「着陸成功！」テキスト
-            const gameOverText = this.add.text(
-                screenCenterX - 850,
-                screenCenterY - 480,
-                '着陸成功！',
-                {
-                    fontSize: '144px',
-                    fill: '#ffff00',
-                    fontStyle: 'bold',
-                    stroke: '#000000',
-                    strokeThickness: 8
-                }
-            );
-            gameOverText.setOrigin(0.5);
-            gameOverText.setScrollFactor(0);
-            gameOverText.setDepth(300);
+            // 着陸時にリザルト表示を開始（アイリスアウトは裏で継続）
+            this.showResultScreen(finalDistance, finalSpeedKmh);
             
-            // 飛距離を大きく表示（メインリザルト）
-            const distanceResultText = this.add.text(
-                screenCenterX - 850,
-                screenCenterY - 250,
-                `${finalDistance} m`,
-                {
-                    fontSize: '260px',
-                    fill: '#00ff00',
-                    fontStyle: 'bold',
-                    stroke: '#000000',
-                    strokeThickness: 10
-                }
-            );
-            distanceResultText.setOrigin(0.5);
-            distanceResultText.setScrollFactor(0);
-            distanceResultText.setDepth(300);
-            
-            // 着地速度（サブ情報）
-            const speedText = this.add.text(
-                screenCenterX - 850,
-                screenCenterY - 20,
-                `着地速度: ${finalSpeedKmh} km/h`,
-                {
-                    fontSize: '72px',
-                    fill: '#ffffff',
-                    fontStyle: 'bold',
-                    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-                    padding: { x: 20, y: 10 }
-                }
-            );
-            speedText.setOrigin(0.5);
-            speedText.setScrollFactor(0);
-            speedText.setDepth(300);
-            
-            // 名前入力UIを表示
-            this.showNameInput(finalDistance);
-            
-            // 再発射ボタンを表示（ランクマッチモードの場合は表示しない）
-            if (!this.isRankMatch) {
-                this.showRetryButton();
-            }
+            // 並行してアイリスアウトを縮小
+            this.shrinkIrisToFinal();
         }
-        
-        // キーボード操作の案内は削除
         
         // 状態テキストを更新
         if (this.statusText) {
             this.statusText.setText('ゲーム終了');
             this.statusText.setStyle({ fill: '#ff0000' });
+        }
+    }
+    
+    
+    /**
+     * 着陸後にアイリスアウトをさらに縮小（裏で継続）
+     */
+    shrinkIrisToFinal() {
+        const cockpitSize = 80; // コックピットがギリギリ見えるサイズ
+        
+        if (!this.irisGraphics || !this.irisCockpitSprite || !this.irisAnimData) {
+            return;
+        }
+        
+        // 既存のアイリスアウトtweenを停止
+        this.tweens.killTweensOf(this.irisAnimData);
+        
+        // 現在の半径からコックピットサイズまで縮小
+        this.tweens.add({
+            targets: this.irisAnimData,
+            radius: cockpitSize,
+            duration: 1500,
+            ease: 'Power2',
+            onUpdate: () => {
+                this.updateIrisOut();
+            },
+            onComplete: () => {
+                this.isIrisOutComplete = true;
+            }
+        });
+    }
+    
+    /**
+     * リザルト画面を表示
+     */
+    showResultScreen(finalDistance, finalSpeedKmh) {
+        const screenCenterX = this.cameras.main.width / 2;
+        const screenCenterY = this.cameras.main.height / 2;
+        const screenWidth = this.cameras.main.width;
+        
+        // 自己ベストを更新したかどうかをチェック
+        const isPersonalBest = this.isPersonalBest(finalDistance);
+        
+        // 新記録ならhoronbia.jpg、そうでなければiei.pngを表示
+        if (isPersonalBest && this.textures.exists('horonbia')) {
+            const horonbiaImage = this.add.image(screenWidth - 1400, 950, 'horonbia');
+            horonbiaImage.setScrollFactor(0);
+            horonbiaImage.setDepth(600);
+            horonbiaImage.setScale(1); // horonbia用のサイズ
+        } else if (this.textures.exists('iei')) {
+            const ieiImage = this.add.image(screenWidth + 450, 500, 'iei');
+            ieiImage.setScrollFactor(0);
+            ieiImage.setDepth(600);
+            ieiImage.setScale(2.6); // iei用のサイズ
+        }
+        
+        // 「着陸成功！」テキスト
+        const gameOverText = this.add.text(
+            screenCenterX - 850,
+            screenCenterY - 480,
+            '着陸成功！',
+            {
+                fontSize: '144px',
+                fill: '#ffff00',
+                fontStyle: 'bold',
+                stroke: '#000000',
+                strokeThickness: 8
+            }
+        );
+        gameOverText.setOrigin(0.5);
+        gameOverText.setScrollFactor(0);
+        gameOverText.setDepth(600);
+        
+        // 飛距離を大きく表示（メインリザルト）
+        const distanceResultText = this.add.text(
+            screenCenterX - 850,
+            screenCenterY - 250,
+            `${finalDistance} m`,
+            {
+                fontSize: '260px',
+                fill: '#00ff00',
+                fontStyle: 'bold',
+                stroke: '#000000',
+                strokeThickness: 10
+            }
+        );
+        distanceResultText.setOrigin(0.5);
+        distanceResultText.setScrollFactor(0);
+        distanceResultText.setDepth(600);
+        
+        // 着地速度（サブ情報）
+        const speedText = this.add.text(
+            screenCenterX - 850,
+            screenCenterY - 20,
+            `着地速度: ${finalSpeedKmh} km/h`,
+            {
+                fontSize: '72px',
+                fill: '#ffffff',
+                fontStyle: 'bold',
+                backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                padding: { x: 20, y: 10 }
+            }
+        );
+        speedText.setOrigin(0.5);
+        speedText.setScrollFactor(0);
+        speedText.setDepth(600);
+        
+        if (isPersonalBest) {
+            // 自己ベストを更新した場合のみ名前入力UIを表示
+            this.showNameInput(finalDistance);
+            
+            // 「確定して再発射」ボタンを表示（ランクマッチモードの場合は表示しない）
+            if (!this.isRankMatch) {
+                this.showConfirmAndRetryButton(finalDistance);
+            }
+        } else {
+            // 自己ベストを更新できなかった場合
+            this.showNoPersonalBestMessage(finalDistance);
+            
+            // 再発射ボタンを表示（記録更新できなかった場合はランクマッチでも表示）
+            this.showRetryButton();
         }
     }
     
@@ -1388,14 +1807,16 @@ export class GameScene extends Phaser.Scene {
             
             // コックピット分離UIの表示/非表示（1回のみ分離可能）
             const hasCockpit = this.rocket.hasCockpit();
-            if (hasCockpit && this.rocket.separationCount < 1 && this.separationText && this.separationGaugeBg && this.separationGauge) {
+            if (hasCockpit && this.rocket.separationCount < 1 && this.separationText && this.separationGaugeBg && this.separationGauge && this.separationPowerText) {
                 this.separationText.setVisible(true);
                 this.separationGaugeBg.setVisible(true);
                 this.separationGauge.setVisible(true);
-            } else if (this.separationText && this.separationGaugeBg && this.separationGauge) {
+                this.separationPowerText.setVisible(true);
+            } else if (this.separationText && this.separationGaugeBg && this.separationGauge && this.separationPowerText) {
                 this.separationText.setVisible(false);
                 this.separationGaugeBg.setVisible(false);
                 this.separationGauge.setVisible(false);
+                this.separationPowerText.setVisible(false);
             }
             
             // ゲージを更新
@@ -1440,6 +1861,103 @@ export class GameScene extends Phaser.Scene {
     /**
      * トロフィーをチェックして解除
      */
+    
+    /**
+     * 自己ベストを更新したかどうかを判定
+     * @param {number} distance - 現在の記録
+     * @returns {boolean} - 自己ベストを更新した場合true
+     */
+    isPersonalBest(distance) {
+        try {
+            if (this.isRankMatch && this.rankMatchDate) {
+                // ランクマッチモード: その日のランキングから最高記録を取得
+                const rankingKey = `rankMatchRanking_${this.rankMatchDate}`;
+                const existingRanking = JSON.parse(localStorage.getItem(rankingKey) || '[]');
+                
+                if (existingRanking.length === 0) {
+                    // ランキングが空の場合は自己ベスト更新とみなす
+                    return true;
+                }
+                
+                // 既存の最高記録を取得
+                const maxDistance = Math.max(...existingRanking.map(r => r.distance));
+                
+                // 現在の記録が最高記録を超えているか、または同じ場合は更新とみなす
+                return distance >= maxDistance;
+            } else {
+                // 通常モード: 通常のランキングから最高記録を取得
+                const rankingKey = 'distanceRanking';
+                const existingRanking = JSON.parse(localStorage.getItem(rankingKey) || '[]');
+                
+                if (existingRanking.length === 0) {
+                    // ランキングが空の場合は自己ベスト更新とみなす
+                    return true;
+                }
+                
+                // 既存の最高記録を取得
+                const maxDistance = Math.max(...existingRanking.map(r => r.distance));
+                
+                // 現在の記録が最高記録を超えているか、または同じ場合は更新とみなす
+                return distance >= maxDistance;
+            }
+        } catch (error) {
+            console.error('Error checking personal best:', error);
+            // エラーが発生した場合は安全のためtrueを返す（ランキング登録を表示）
+            return true;
+        }
+    }
+    
+    /**
+     * 自己ベストを更新できなかった場合のメッセージを表示
+     */
+    showNoPersonalBestMessage(finalDistance) {
+        const screenWidth = this.cameras.main.width +900;
+        const screenHeight = this.cameras.main.height;
+        const screenCenterX = screenWidth / 2;
+        const screenCenterY = screenHeight / 2;
+        
+        // メッセージパネル
+        const messagePanel = this.add.container(screenCenterX + 500, screenCenterY - 400);
+        messagePanel.setScrollFactor(0);
+        messagePanel.setDepth(600);
+        
+        // パネル背景
+        const panelBg = this.add.rectangle(0, -200, 1200, 400, 0x2c3e50);
+        panelBg.setStrokeStyle(3, 0xffffff);
+        
+        // メッセージテキスト
+        const messageText = this.add.text(0, -250, '自己ベストを更新できませんでした', {
+            fontSize: '64px',
+            fill: '#ffffff',
+            fontStyle: 'bold',
+            align: 'center',
+            wordWrap: { width: 550 }
+        });
+        messageText.setOrigin(0.5);
+        
+        // 現在の記録を表示
+        const currentRecordText = this.add.text(0, -200, `今回の記録: ${finalDistance.toLocaleString()} m`, {
+            fontSize: '52px',
+            fill: '#bdc3c7',
+            align: 'center'
+        });
+        currentRecordText.setOrigin(0.5);
+        
+        messagePanel.add([panelBg, messageText, currentRecordText]);
+        
+        // 3秒後に自動的にフェードアウト
+        this.tweens.add({
+            targets: messagePanel,
+            alpha: 0,
+            duration: 500,
+            delay: 2500,
+            ease: 'Power2',
+            onComplete: () => {
+                messagePanel.destroy();
+            }
+        });
+    }
+    
     /**
      * 名前入力UIを表示
      */
@@ -1473,7 +1991,7 @@ export class GameScene extends Phaser.Scene {
         });
         titleText.setOrigin(0.5);
         titleText.setScrollFactor(0); // スクリーン座標に固定
-        titleText.setDepth(401);
+        titleText.setDepth(600);
         
         // 説明文（スクリーン座標で固定）
         const instructionText = this.add.text(screenCenterX + 500, screenCenterY - 250, 'アルファベット5文字で名前を入力', {
@@ -1482,7 +2000,16 @@ export class GameScene extends Phaser.Scene {
         });
         instructionText.setOrigin(0.5);
         instructionText.setScrollFactor(0); // スクリーン座標に固定
-        instructionText.setDepth(401);
+        instructionText.setDepth(600);
+        
+        // 注意書き（スクリーン座標で固定）
+        const warningText = this.add.text(screenCenterX + 500, screenCenterY + 350, '※確定を押さないとランキングには反映されません', {
+            fontSize: '36px',
+            fill: '#ffff00'
+        });
+        warningText.setOrigin(0.5);
+        warningText.setScrollFactor(0);
+        warningText.setDepth(600);
         
         // HTMLのinput要素を作成
         const gameContainer = document.getElementById('game-container');
@@ -1604,7 +2131,7 @@ export class GameScene extends Phaser.Scene {
         retryButton.setSize(400, 80);
         retryButton.setInteractive({ useHandCursor: true });
         retryButton.setScrollFactor(0); // スクリーン座標に固定
-        retryButton.setDepth(402);
+        retryButton.setDepth(600);
         
         // 再発射ボタンのホバー効果
         retryButton.on('pointerover', () => {
@@ -1627,6 +2154,8 @@ export class GameScene extends Phaser.Scene {
             }
             
             // 同じロケット構成でGameSceneを再起動
+            // 遷移前に確実に名前入力UIを削除
+            this.removeNameInputUI();
             const rocketDesignData = this.rocketDesign ? this.rocketDesign.toJSON() : null;
             this.scene.start('GameScene', { rocketDesign: rocketDesignData });
         });
@@ -1639,28 +2168,134 @@ export class GameScene extends Phaser.Scene {
     }
     
     /**
+     * 確定して再発射ボタンを表示（新記録時用）
+     */
+    showConfirmAndRetryButton(finalDistance) {
+        const screenWidth = this.cameras.main.width;
+        const screenHeight = this.cameras.main.height;
+        const screenCenterX = screenWidth / 2 + 580;
+        const buttonY = screenHeight - 200;
+        
+        const confirmRetryButton = this.add.container(screenCenterX, buttonY);
+        const confirmRetryBg = this.add.rectangle(0, 0, 500, 80, 0x27ae60);
+        confirmRetryBg.setStrokeStyle(2, 0xffffff);
+        const confirmRetryText = this.add.text(0, 0, '確定して再発射', {
+            fontSize: '48px',
+            fill: '#ffffff',
+            fontStyle: 'bold'
+        });
+        confirmRetryText.setOrigin(0.5);
+        confirmRetryButton.add([confirmRetryBg, confirmRetryText]);
+        confirmRetryButton.setSize(500, 80);
+        confirmRetryButton.setInteractive({ useHandCursor: true });
+        confirmRetryButton.setScrollFactor(0);
+        confirmRetryButton.setDepth(600);
+        
+        confirmRetryButton.on('pointerover', () => {
+            confirmRetryBg.setFillStyle(0x2ecc71);
+        });
+        confirmRetryButton.on('pointerout', () => {
+            confirmRetryBg.setFillStyle(0x27ae60);
+        });
+        
+        confirmRetryButton.on('pointerdown', () => {
+            // deci.mp3を再生
+            if (this.cache.audio.exists('deci')) {
+                this.sound.play('deci', { volume: 0.5 });
+            }
+            
+            // 名前入力から名前を取得してランキング更新
+            const nameInput = this.nameInputOverlay?.nameInput;
+            let playerName = 'ANON';
+            if (nameInput && nameInput.value) {
+                playerName = nameInput.value.toUpperCase().substring(0, 5);
+                if (playerName.length === 0) playerName = 'ANON';
+            }
+            
+            // ランキングを更新（submitNameを使用）
+            this.submitName(finalDistance, playerName);
+            
+            // 同じロケット構成でGameSceneを再起動
+            const rocketDesignData = this.rocketDesign ? this.rocketDesign.toJSON() : null;
+            this.scene.start('GameScene', { rocketDesign: rocketDesignData });
+        });
+        
+        // 参照を保存
+        if (!this.nameInputOverlay) {
+            this.nameInputOverlay = {};
+        }
+        this.nameInputOverlay.confirmRetryButton = confirmRetryButton;
+    }
+    
+    /**
      * 名前入力UIを強制的に削除
      */
     removeNameInputUI() {
+        // 確実に削除するため、複数回呼ばれても安全にする
         if (this.nameInputOverlay) {
             // HTMLのinput要素を削除
-            if (this.nameInputOverlay.nameInput && this.nameInputOverlay.nameInput.parentNode) {
-                this.nameInputOverlay.nameInput.parentNode.removeChild(this.nameInputOverlay.nameInput);
+            if (this.nameInputOverlay.nameInput) {
+                try {
+                    if (this.nameInputOverlay.nameInput.parentNode) {
+                        this.nameInputOverlay.nameInput.parentNode.removeChild(this.nameInputOverlay.nameInput);
+                    }
+                    // イベントリスナーを削除
+                    const newInput = this.nameInputOverlay.nameInput.cloneNode(false);
+                    this.nameInputOverlay.nameInput.replaceWith(newInput);
+                    this.nameInputOverlay.nameInput = null;
+                } catch (e) {
+                    console.warn('Error removing nameInput:', e);
+                }
             }
             // Phaserのテキストとボタンを削除
             if (this.nameInputOverlay.titleText) {
-                this.nameInputOverlay.titleText.destroy();
+                try {
+                    this.nameInputOverlay.titleText.destroy();
+                } catch (e) {
+                    console.warn('Error destroying titleText:', e);
+                }
+                this.nameInputOverlay.titleText = null;
             }
             if (this.nameInputOverlay.instructionText) {
-                this.nameInputOverlay.instructionText.destroy();
+                try {
+                    this.nameInputOverlay.instructionText.destroy();
+                } catch (e) {
+                    console.warn('Error destroying instructionText:', e);
+                }
+                this.nameInputOverlay.instructionText = null;
             }
             if (this.nameInputOverlay.submitButton) {
-                this.nameInputOverlay.submitButton.destroy();
+                try {
+                    this.nameInputOverlay.submitButton.destroy();
+                } catch (e) {
+                    console.warn('Error destroying submitButton:', e);
+                }
+                this.nameInputOverlay.submitButton = null;
             }
             if (this.nameInputOverlay.retryButton) {
-                this.nameInputOverlay.retryButton.destroy();
+                try {
+                    this.nameInputOverlay.retryButton.destroy();
+                } catch (e) {
+                    console.warn('Error destroying retryButton:', e);
+                }
+                this.nameInputOverlay.retryButton = null;
             }
             this.nameInputOverlay = null;
+        }
+        
+        // 念のため、game-container内のinput要素も直接削除
+        const gameContainer = document.getElementById('game-container');
+        if (gameContainer) {
+            const inputs = gameContainer.querySelectorAll('input[type="text"]');
+            inputs.forEach(input => {
+                try {
+                    if (input.parentNode) {
+                        input.parentNode.removeChild(input);
+                    }
+                } catch (e) {
+                    console.warn('Error removing input element:', e);
+                }
+            });
         }
     }
     
@@ -2244,8 +2879,18 @@ export class GameScene extends Phaser.Scene {
     shutdown() {
         console.log('GameScene: shutdown() called - cleaning up');
         
-        // 名前入力UIをクリーンアップ
+        // justmeet動画をクリーンアップ
+        this.removeJustmeetVideo();
+        
+        // 名前入力UIをクリーンアップ（確実に削除）
         this.removeNameInputUI();
+        
+        // 念のため、少し遅延させて再度削除を試みる（非同期で実行）
+        if (typeof setTimeout !== 'undefined') {
+            setTimeout(() => {
+                this.removeNameInputUI();
+            }, 100);
+        }
         
         // BGMを停止
         this.stopBGM();

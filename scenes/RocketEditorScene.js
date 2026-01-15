@@ -3292,13 +3292,35 @@ export class RocketEditorScene extends Phaser.Scene {
         });
         
         // 再生開始
-        if (autoplay) {
-            video.play().catch(err => {
-                console.warn('Video autoplay failed:', err);
-                // 自動再生が失敗した場合（ブラウザのポリシー）、ユーザー操作後に再生
-                video.muted = true; // ミュートにすると自動再生できる場合がある
-                video.play().catch(e => console.error('Video play failed:', e));
-            });
+        const startPlayback = () => {
+            if (autoplay) {
+                video.play().catch(err => {
+                    console.warn('Video autoplay failed:', err);
+                    // 自動再生が失敗した場合（ブラウザのポリシー）、ユーザー操作後に再生
+                    video.muted = true; // ミュートにすると自動再生できる場合がある
+                    video.play().catch(e => console.error('Video play failed:', e));
+                });
+            }
+        };
+        
+        // 動画の読み込みが完了してから再生を試みる
+        if (video.readyState >= 2) {
+            // 既に読み込まれている場合はすぐに再生
+            startPlayback();
+        } else {
+            // 読み込み完了を待つ
+            video.addEventListener('loadeddata', () => {
+                console.log('Video loaded, starting playback:', videoPath);
+                startPlayback();
+            }, { once: true });
+            
+            // フォールバック: 一定時間後に再生を試みる
+            setTimeout(() => {
+                if (video.readyState >= 2) {
+                    console.log('Video ready after timeout, starting playback:', videoPath);
+                    startPlayback();
+                }
+            }, 1000);
         }
         
         // シーン終了時にクリーンアップ

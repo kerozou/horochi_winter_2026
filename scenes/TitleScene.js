@@ -382,6 +382,44 @@ export class TitleScene extends Phaser.Scene {
             this.showCredits();
         });
         
+        // デバッグ用：自己記録クリアボタン（フラグで表示/非表示を切り替え）
+        const showDebugClearButton = true; // trueにすると表示される
+        if (showDebugClearButton) {
+            const clearButtonSize = 50;
+            const clearButton = this.add.container(screenWidth - creditButtonSize - clearButtonSize - 20, screenHeight - clearButtonSize - 10);
+            
+            const clearBg = this.add.rectangle(0, 0, clearButtonSize, clearButtonSize, 0xe74c3c);
+            clearBg.setStrokeStyle(2, 0xffffff);
+            
+            const clearText = this.add.text(0, 0, 'X', {
+                fontSize: '32px',
+                fill: '#ffffff',
+                fontStyle: 'bold'
+            });
+            clearText.setOrigin(0.5);
+            
+            clearButton.add([clearBg, clearText]);
+            clearButton.setSize(clearButtonSize, clearButtonSize);
+            clearButton.setInteractive({ useHandCursor: true });
+            
+            clearButton.on('pointerover', () => {
+                clearBg.setFillStyle(0xc0392b);
+            });
+            clearButton.on('pointerout', () => {
+                clearBg.setFillStyle(0xe74c3c);
+            });
+            
+            clearButton.on('pointerdown', () => {
+                this.playButtonSound();
+                // 自己記録をクリア
+                localStorage.removeItem('personalBest');
+                localStorage.removeItem('distanceRanking');
+                localStorage.removeItem('rankMatchRanking');
+                console.log('自己記録をクリアしました');
+                alert('自己記録をクリアしました');
+            });
+        }
+        
         // 操作説明
         const instructions = this.add.text(
             rightHalfCenterX,
@@ -770,19 +808,21 @@ export class TitleScene extends Phaser.Scene {
             ' ・ほろっち (タイトル・エディタ)\n' +
             ' ・魔王魂 (ロケット発射)\n\n' +
             '効果音:\n' +
-            ' ・効果音ラボ (SE)\n' +
-            ' ・COEIROINK:幌呂めぐる (CV)\n\n' +
+            ' ・効果音ラボ (SE・CV:音枝優日, アズミ)\n' +
+            ' ・COEIROINK:幌呂めぐる (CV: ビビアン・レッドドア)\n\n' +
             'イラスト:\n' +
             ' ・ほろっち: キャラクターイラスト・アニメーション\n' +
-            ' ・だれのき(@darenoki): エフェクト\n' +
-            ' ・sirousagi: ビル背景イラスト\n\n'+
+            ' ・だれのき(@darenoki): 白いエフェクト\n' +
+            ' ・sirousagi: ビル背景イラスト\n'+
+            ' ・パブリックドメインQ\n'+
+            ' ・videoAC\n\n'+
             'lib:\n' +
             ' ・Phaser.js 3.80.1\n',
             {
                 fontSize: '14px',
                 fill: '#ffffff',
                 align: 'leftr',
-                lineSpacing: 4
+                lineSpacing: 3
             }
         );
         creditText.setOrigin(0.5);

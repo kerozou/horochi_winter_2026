@@ -898,13 +898,13 @@ export class Rocket {
      * コックピットを分離する（運動量保存を考慮）
      * @param {number} charge - 分離ゲージ（0-100）
      */
-    separateCockpit(charge) {
+    separateCockpit(charge, thrustMultiplier = 1.0) {
         // 1回分離後は分離できない
         if (this.separationCount >= 1 || !this.cockpitSprites || this.cockpitSprites.length === 0) {
             return;
         }
         
-        console.log('Separating cockpit with charge:', charge, 'Separation count:', this.separationCount + 1);
+        console.log('Separating cockpit with charge:', charge, 'thrust multiplier:', thrustMultiplier, 'Separation count:', this.separationCount + 1);
         
         // 現在のロケットの速度と位置を取得
         const rocketVelocity = this.sprite.body.velocity;
@@ -1017,8 +1017,14 @@ export class Rocket {
                 const tangentialVelocityY = rocketAngularVelocity * cockpitRelativeX;
                 
                 // コックピットの速度 = ロケットの並進速度 + 接線速度（遠心力効果）
-                const cockpitVelocityX = rocketVelocity.x + tangentialVelocityX;
-                const cockpitVelocityY = rocketVelocity.y + tangentialVelocityY;
+                let cockpitVelocityX = rocketVelocity.x + tangentialVelocityX;
+                let cockpitVelocityY = rocketVelocity.y + tangentialVelocityY;
+                
+                // 推進力倍率を適用（分離方向に推進力を加える）
+                // 分離方向（上方向）に推進力を適用
+                const thrustForce = 5.0 * thrustMultiplier; // 基本推進力5.0に倍率を適用
+                cockpitVelocityX += separationDirX * thrustForce;
+                cockpitVelocityY += separationDirY * thrustForce;
                 
                 separatedCockpit.setVelocity(cockpitVelocityX, cockpitVelocityY);
                 
