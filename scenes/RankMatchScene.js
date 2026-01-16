@@ -52,8 +52,8 @@ export class RankMatchScene extends Phaser.Scene {
         this.cameras.main.setBackgroundColor('#2c3e50');
         
         // タイトル
-        const title = this.add.text(centerX, 50, '⚔️ ランクマッチ', {
-            fontSize: '48px',
+        const title = this.add.text(centerX, 40, '⚔️ ランクマッチ', {
+            fontSize: '32px',
             fill: '#ffffff',
             fontStyle: 'bold',
             stroke: '#000000',
@@ -64,7 +64,7 @@ export class RankMatchScene extends Phaser.Scene {
         title.setDepth(100);
         
         // 説明文
-        const description = this.add.text(centerX, 100, 'その日の固定パーツでロケットを作成して飛ばそう！', {
+        const description = this.add.text(centerX+330, 100, 'その日の固定パーツでロケットを作成して飛ばそう！', {
             fontSize: '20px',
             fill: '#bdc3c7',
             align: 'center'

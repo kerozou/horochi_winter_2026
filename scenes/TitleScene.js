@@ -293,7 +293,7 @@ export class TitleScene extends Phaser.Scene {
         const subtitle = this.add.text(
             rightHalfCenterX,
             centerY - 230,
-            'ナウいロケットを作って皆に自慢しよう！',
+            'ver2.5\nナウいロケットを作って皆に自慢しよう！',
             {
                 fontSize: '28px',
                 fill: '#ffffff',
@@ -813,6 +813,7 @@ export class TitleScene extends Phaser.Scene {
             'イラスト:\n' +
             ' ・ほろっち: キャラクターイラスト・アニメーション\n' +
             ' ・だれのき(@darenoki): 白いエフェクト\n' +
+            ' ・サクソラまてりある: キラキラエフェクト\n' +
             ' ・sirousagi: ビル背景イラスト\n'+
             ' ・パブリックドメインQ\n'+
             ' ・videoAC\n\n'+
@@ -822,7 +823,7 @@ export class TitleScene extends Phaser.Scene {
                 fontSize: '14px',
                 fill: '#ffffff',
                 align: 'leftr',
-                lineSpacing: 3
+                lineSpacing: 2
             }
         );
         creditText.setOrigin(0.5);

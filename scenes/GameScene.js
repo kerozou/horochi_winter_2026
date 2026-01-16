@@ -155,6 +155,9 @@ export class GameScene extends Phaser.Scene {
         if (!this.textures.exists('kirakira')) {
             this.load.image('kirakira', 'resources/kirakira.png');
         }
+        if (!this.cache.json.exists('shibou')) {
+            this.load.json('shibou', 'resources/shibou.json');
+        }
     }
     
     create() {
@@ -209,7 +212,7 @@ export class GameScene extends Phaser.Scene {
                     if (!this.anims.exists('kirakira_anim')) {
                         this.anims.create({
                             key: 'kirakira_anim',
-                            frames: this.anims.generateFrameNumbers('kirakira_sheet', { start: 0, end: 128 }), // 0-130で131フレーム
+                            frames: this.anims.generateFrameNumbers('kirakira_sheet', { start: 0, end: 127 }), // 0-130で131フレーム
                             frameRate: 32, // フレームレート（必要に応じて調整）
                             repeat: -1 // 無限ループ
                         });
@@ -220,7 +223,7 @@ export class GameScene extends Phaser.Scene {
                 // スプライトシートが既に存在する場合はアニメーションのみ定義
                 this.anims.create({
                     key: 'kirakira_anim',
-                    frames: this.anims.generateFrameNumbers('kirakira_sheet', { start: 0, end: 128 }), // 0-130で131フレーム
+                    frames: this.anims.generateFrameNumbers('kirakira_sheet', { start: 0, end: 127 }), // 0-130で131フレーム
                     frameRate: 32, // フレームレート（必要に応じて調整）
                     repeat: -1 // 無限ループ
                 });
@@ -987,7 +990,24 @@ export class GameScene extends Phaser.Scene {
                 this.cameras.main.once('camerafadeoutcomplete', () => {
                     // 遷移直前に再度削除を確認
                     this.removeNameInputUI();
-                    this.scene.start('RankMatchScene');
+                    
+                    // 黒画面を表示して0.5秒待機
+                    const screenWidth = this.cameras.main.width;
+                    const screenHeight = this.cameras.main.height;
+                    const blackOverlay = this.add.rectangle(
+                        screenWidth / 2,
+                        screenHeight / 2,
+                        screenWidth,
+                        screenHeight,
+                        0x000000
+                    );
+                    blackOverlay.setScrollFactor(0);
+                    blackOverlay.setDepth(10000);
+                    
+                    // 0.5秒後にシーン遷移
+                    this.time.delayedCall(500, () => {
+                        this.scene.start('RankMatchScene');
+                    });
                 });
             });
             return;
@@ -1034,7 +1054,24 @@ export class GameScene extends Phaser.Scene {
             this.cameras.main.once('camerafadeoutcomplete', () => {
                 // 遷移直前に再度削除を確認
                 this.removeNameInputUI();
-                this.scene.start('TitleScene');
+                
+                // 黒画面を表示して0.5秒待機
+                const screenWidth = this.cameras.main.width;
+                const screenHeight = this.cameras.main.height;
+                const blackOverlay = this.add.rectangle(
+                    screenWidth / 2,
+                    screenHeight / 2,
+                    screenWidth,
+                    screenHeight,
+                    0x000000
+                );
+                blackOverlay.setScrollFactor(0);
+                blackOverlay.setDepth(10000);
+                
+                // 0.5秒後にシーン遷移
+                this.time.delayedCall(500, () => {
+                    this.scene.start('TitleScene');
+                });
             });
         });
     }
@@ -1812,11 +1849,11 @@ export class GameScene extends Phaser.Scene {
             const kirakiraSprite = this.add.sprite(screenCenterX, screenCenterY, 'kirakira_sheet');
             kirakiraSprite.setScrollFactor(0);
             kirakiraSprite.setDepth(50); // セピアオーバーレイより下
-            kirakiraSprite.setAlpha(0.3); // 透明度30%
+            kirakiraSprite.setAlpha(0.25); // 透明度30%
             // 画面全体に表示するようにスケール調整
             const texture = this.textures.get('kirakira_sheet');
             const frameHeight = texture.source[0].height / 26;
-            const scale = screenHeight / frameHeight + 5;
+            const scale = screenHeight / frameHeight + 6.3;
             kirakiraSprite.setScale(scale);
             kirakiraSprite.play('kirakira_anim');
         }
@@ -1845,6 +1882,41 @@ export class GameScene extends Phaser.Scene {
             bgBlackImage.setScale(scaleY);
         }
         
+        // shibou.jsonからランダムに1つ選んで画面中央に表示
+        if (this.cache.json.exists('shibou')) {
+            const shibouData = this.cache.json.get('shibou');
+            if (shibouData && Array.isArray(shibouData) && shibouData.length > 0) {
+                // ランダムに1つ選ぶ
+                const randomIndex = Math.floor(Math.random() * shibouData.length);
+                const selectedShibou = shibouData[randomIndex];
+                
+                // メッセージ回収状況を保存
+                const collectedShibou = JSON.parse(localStorage.getItem('collectedShibou') || '[]');
+                if (!collectedShibou.includes(selectedShibou.num)) {
+                    collectedShibou.push(selectedShibou.num);
+                    localStorage.setItem('collectedShibou', JSON.stringify(collectedShibou));
+                }
+                
+                // テキストを画面中央に表示
+                const shibouText = this.add.text(
+                    screenCenterX,
+                    screenCenterY - 200,
+                    selectedShibou.text,
+                    {
+                        fontSize: '64px',
+                        fill: '#ffffff',
+                        fontStyle: 'bold',
+                        fontFamily: '"ヒラギノ明朝 ProN", "Hiragino Mincho ProN", "游明朝", "Yu Mincho", "MS 明朝", "MS Mincho", serif',
+                        align: 'center',
+                        wordWrap: { width: screenWidth - 200 }
+                    }
+                );
+                shibouText.setOrigin(0.5);
+                shibouText.setScrollFactor(0);
+                shibouText.setDepth(600);
+            }
+        }
+        
         // 新記録ならhoronbia.jpg、そうでなければiei.pngを表示（現在は無効化）
         // if (isPersonalBest && this.textures.exists('horonbia')) {
         //     const horonbiaImage = this.add.image(screenWidth - 1400, 950, 'horonbia');
@@ -1864,6 +1936,7 @@ export class GameScene extends Phaser.Scene {
             keireiImage.setScrollFactor(0);
             keireiImage.setDepth(600);
             keireiImage.setOrigin(0, 0);
+            keireiImage.setAlpha(0.6); // 透明度60%
         }
         
         // 右下にeru_back, hirameki_back, binba_backを並べて表示
@@ -1883,15 +1956,97 @@ export class GameScene extends Phaser.Scene {
             hiramekiImage.setOrigin(0.5, 1);
         }
         if (this.textures.exists('binba_back')) {
-            const binbaImage = this.add.image(screenWidth - backImageSpacing +800 - 1300, backImageY + 1200, 'binba_back');
+            const binbaImage = this.add.image(screenWidth - backImageSpacing +800 - 1300, backImageY + 1000, 'binba_back');
             binbaImage.setScrollFactor(0);
             binbaImage.setDepth(600);
             binbaImage.setOrigin(0.5, 1);
+            binbaImage.setScale(0.8);
         }
+        
+        // 右下に「fin.」を筆記体で表示
+        const finText = this.add.text(
+            screenWidth + 800,
+            screenHeight + 750,
+            'hororo winter 2026',
+            {
+                fontSize: '64px',
+                fill: '#ffffff',
+                fontFamily: '"Brush Script MT", "Brush Script", "Lucida Handwriting", "Comic Sans MS", cursive',
+                fontStyle: 'italic'
+            }
+        );
+        finText.setOrigin(1, 1); // 右下揃え
+        finText.setScrollFactor(0);
+        finText.setDepth(1000);
+        
+        // スクリーンショットボタン（右下）
+        const screenshotButton = this.add.container(screenWidth + 1000, screenHeight + 500);
+        const screenshotBg = this.add.rectangle(0, 0, 200, 60, 0x4a90e2);
+        screenshotBg.setStrokeStyle(2, 0xffffff);
+        const screenshotText = this.add.text(0, 0, 'スクショ', {
+            fontSize: '32px',
+            fill: '#ffffff',
+            fontStyle: 'bold'
+        });
+        screenshotText.setOrigin(0.5);
+        screenshotButton.add([screenshotBg, screenshotText]);
+        screenshotButton.setSize(200, 60);
+        screenshotButton.setInteractive({ useHandCursor: true });
+        screenshotButton.setScrollFactor(0);
+        screenshotButton.setDepth(1000);
+        
+        // スクリーンショットボタンのホバー効果
+        screenshotButton.on('pointerover', () => {
+            screenshotBg.setFillStyle(0x357abd);
+        });
+        screenshotButton.on('pointerout', () => {
+            screenshotBg.setFillStyle(0x4a90e2);
+        });
+        
+        // スクリーンショットボタンのクリックイベント
+        screenshotButton.on('pointerdown', () => {
+            // ゲーム画面をスクリーンショット
+            this.game.renderer.snapshot((image) => {
+                // Canvasに描画してBlobに変換
+                const canvas = document.createElement('canvas');
+                canvas.width = image.width;
+                canvas.height = image.height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(image, 0, 0);
+                
+                // Blobに変換
+                canvas.toBlob((blob) => {
+                    if (!blob) {
+                        console.error('Blobの作成に失敗しました');
+                        return;
+                    }
+                    
+                    // クリップボードにコピー
+                    if (navigator.clipboard && navigator.clipboard.write) {
+                        const item = new ClipboardItem({ 'image/png': blob });
+                        navigator.clipboard.write([item]).then(() => {
+                            console.log('スクリーンショットをクリップボードにコピーしました');
+                            // ボタンテキストを一時的に変更してフィードバック
+                            screenshotText.setText('コピー済み');
+                            this.time.delayedCall(2000, () => {
+                                screenshotText.setText('スクショ');
+                            });
+                        }).catch((err) => {
+                            console.error('クリップボードへのコピーに失敗しました:', err);
+                            // フォールバック: ダウンロード
+                            this.downloadScreenshot(blob);
+                        });
+                    } else {
+                        // クリップボードAPIが使えない場合はダウンロード
+                        this.downloadScreenshot(blob);
+                    }
+                }, 'image/png');
+            });
+        });
         
         // 「着陸成功！」テキスト（画面中央上部）
         const gameOverText = this.add.text(
-            screenCenterX + 1000,
+            screenCenterX + 1100,
             screenCenterY - 330 - 380,
             '着陸成功！',
             {
@@ -1908,7 +2063,7 @@ export class GameScene extends Phaser.Scene {
         
         // 飛距離を大きく表示（画面中央）
         const distanceResultText = this.add.text(
-            screenCenterX + 1000,
+            screenCenterX + 1100,
             screenCenterY - 180 - 250,
             `${finalDistance} m`,
             {
@@ -1925,7 +2080,7 @@ export class GameScene extends Phaser.Scene {
         
         // 着地速度（飛距離の下）
         const speedText = this.add.text(
-            screenCenterX + 1000,
+            screenCenterX + 1100,
             screenCenterY - 60 - 250,
             `着地速度: ${finalSpeedKmh} km/h`,
             {
@@ -1944,13 +2099,11 @@ export class GameScene extends Phaser.Scene {
             // 自己ベストを更新した場合のみ名前入力UIを表示
             this.showNameInput(finalDistance);
             
-            // 「確定して再発射」ボタンを表示（ランクマッチモードの場合は表示しない）
-            if (!this.isRankMatch) {
-                this.showConfirmAndRetryButton(finalDistance);
-            }
+            // 「確定して再発射」ボタンを表示（ランクマッチモードでも表示）
+            this.showConfirmAndRetryButton(finalDistance);
         } else {
-            // 自己ベストを更新できなかった場合
-            this.showNoPersonalBestMessage(finalDistance);
+            // // 自己ベストを更新できなかった場合
+            // this.showNoPersonalBestMessage(finalDistance);
             
             // 再発射ボタンを表示（記録更新できなかった場合はランクマッチでも表示）
             this.showRetryButton();
@@ -2203,7 +2356,7 @@ export class GameScene extends Phaser.Scene {
         const panelHeight = 900;
         
         // タイトル（画面中央下部）
-        const titleText = this.add.text(screenCenterX + 1000, screenCenterY + 90 - 250, 'ランキングに登録', {
+        const titleText = this.add.text(screenCenterX + 1100, screenCenterY + 90 - 250, 'ランキングに登録', {
             fontSize: '48px',
             fill: '#ffffff',
             fontStyle: 'bold'
@@ -2213,7 +2366,7 @@ export class GameScene extends Phaser.Scene {
         titleText.setDepth(600);
         
         // 説明文（タイトルの下）
-        const instructionText = this.add.text(screenCenterX + 1000, screenCenterY + 150 - 250, 'アルファベット5文字で名前を入力', {
+        const instructionText = this.add.text(screenCenterX + 1100, screenCenterY + 150 - 250, 'アルファベットと数字5文字で名前を入力', {
             fontSize: '35px',
             fill: '#ffffff'
         });
@@ -2222,7 +2375,7 @@ export class GameScene extends Phaser.Scene {
         instructionText.setDepth(600);
         
         // 注意書き（入力フィールドの下）
-        const warningText = this.add.text(screenCenterX + 1000, screenCenterY + 370 - 200, '※確定して再発射を押さないとランキングには反映されません', {
+        const warningText = this.add.text(screenCenterX + 1100, screenCenterY + 370 - 200, '※確定して再発射を押さないとランキングには反映されません', {
             fontSize: '35px',
             fill: '#ffff00'
         });
@@ -2246,7 +2399,7 @@ export class GameScene extends Phaser.Scene {
             const instructionY = screenCenterY + 150 - 250; // 説明文のY座標
             const inputYOffset = instructionY + 17.5 + 40; // 説明文の下に配置
             // 画面の固定位置（ビューポート座標）で計算
-            const inputX = canvasRect.left + (screenCenterX + 330 - inputWidth / 2) * scaleX;
+            const inputX = canvasRect.left + (screenCenterX + 363 - inputWidth / 2) * scaleX;
             const inputY = canvasRect.top + inputYOffset * scaleY + 37;
             
             const nameInput = document.createElement('input');
@@ -2268,9 +2421,9 @@ export class GameScene extends Phaser.Scene {
             nameInput.value = 'MGR01';
             nameInput.placeholder = 'MGR01';
             
-            // アルファベットのみ入力可能にする
+            // アルファベットと数字のみ入力可能にする
             nameInput.addEventListener('input', (e) => {
-                e.target.value = e.target.value.replace(/[^A-Za-z]/g, '').toUpperCase().substring(0, 5);
+                e.target.value = e.target.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase().substring(0, 5);
             });
             
             // Enterキーで確定
@@ -2325,6 +2478,7 @@ export class GameScene extends Phaser.Scene {
             this.nameInputOverlay = {
                 titleText: titleText,
                 instructionText: instructionText,
+                warningText: warningText,
                 nameInput: nameInput
             };
         }
@@ -2338,10 +2492,10 @@ export class GameScene extends Phaser.Scene {
         const screenHeight = this.cameras.main.height;
         const screenCenterX = screenWidth / 2;
         const screenCenterY = screenHeight / 2;
-        const buttonY = screenCenterY + 170; // 画面中央下部
+        const buttonY = screenCenterY - 170; // 画面中央下部
         
         // 再発射ボタン（スクリーン座標で固定）
-        const retryButton = this.add.container(screenCenterX + 1000, buttonY + 150);
+        const retryButton = this.add.container(screenCenterX + 1100, buttonY + 150);
         const retryBg = this.add.rectangle(0, 0, 400, 80, 0x4ecdc4);
         retryBg.setStrokeStyle(2, 0xffffff);
         const retryText = this.add.text(0, 0, '再発射', {
@@ -2355,6 +2509,7 @@ export class GameScene extends Phaser.Scene {
         retryButton.setInteractive({ useHandCursor: true });
         retryButton.setScrollFactor(0); // スクリーン座標に固定
         retryButton.setDepth(600);
+        retryButton.setScale(1.5);
         
         // 再発射ボタンのホバー効果
         retryButton.on('pointerover', () => {
@@ -2397,7 +2552,7 @@ export class GameScene extends Phaser.Scene {
         const screenCenterY = screenHeight / 2;
         const buttonY = screenCenterY + 220;
         
-        const confirmRetryButton = this.add.container(screenCenterX + 1000, buttonY + 100);
+        const confirmRetryButton = this.add.container(screenCenterX + 1100, buttonY + 100);
         const confirmRetryBg = this.add.rectangle(0, 0, 500, 80, 0x27ae60);
         confirmRetryBg.setStrokeStyle(2, 0xffffff);
         const confirmRetryText = this.add.text(0, 0, '確定して再発射', {
@@ -2426,11 +2581,15 @@ export class GameScene extends Phaser.Scene {
             }
             
             // 名前入力から名前を取得してランキング更新
-            const nameInput = this.nameInputOverlay?.nameInput;
             let playerName = 'ANON';
-            if (nameInput && nameInput.value) {
-                playerName = nameInput.value.toUpperCase().substring(0, 5);
-                if (playerName.length === 0) playerName = 'ANON';
+            if (this.nameInputOverlay && this.nameInputOverlay.nameInput) {
+                const nameInput = this.nameInputOverlay.nameInput;
+                // DOM要素から直接値を取得
+                const inputValue = nameInput.value || nameInput.placeholder || 'ANON';
+                playerName = inputValue.toUpperCase().replace(/[^A-Z0-9]/g, '').substring(0, 5);
+                if (playerName.length === 0) {
+                    playerName = 'ANON';
+                }
             }
             
             // ランキングを更新（submitNameを使用）
@@ -2531,11 +2690,27 @@ export class GameScene extends Phaser.Scene {
                     // トランジショングラフィックスを破棄
                     transitionGraphics.destroy();
                     
+                    // 黒画面を表示して0.5秒待機
+                    const screenWidth = this.cameras.main.width;
+                    const screenHeight = this.cameras.main.height;
+                    const blackOverlay = this.add.rectangle(
+                        screenWidth / 2,
+                        screenHeight / 2,
+                        screenWidth,
+                        screenHeight,
+                        0x000000
+                    );
+                    blackOverlay.setScrollFactor(0);
+                    blackOverlay.setDepth(10000);
+                    
+                    // 0.5秒後にシーン遷移
                     const rocketDesignData = this.rocketDesign ? this.rocketDesign.toJSON() : null;
-                    this.scene.start('GameScene', { 
-                        rocketDesign: rocketDesignData,
-                        isRankMatch: this.isRankMatch,
-                        dateString: this.rankMatchDate
+                    this.time.delayedCall(500, () => {
+                        this.scene.start('GameScene', { 
+                            rocketDesign: rocketDesignData,
+                            isRankMatch: this.isRankMatch,
+                            dateString: this.rankMatchDate
+                        });
                     });
                 });
             }
@@ -2618,9 +2793,9 @@ export class GameScene extends Phaser.Scene {
      * 名前を確定してランキングに保存
      */
     submitName(distance, name) {
-        // 名前を正規化（アルファベットのみ、大文字、最大5文字）
+        // 名前を正規化（アルファベットと数字のみ、大文字、最大5文字）
         // 入力されていない文字は埋めない
-        const normalizedName = name.toUpperCase().replace(/[^A-Z]/g, '').substring(0, 5);
+        const normalizedName = name.toUpperCase().replace(/[^A-Z0-9]/g, '').substring(0, 5);
         this.lastEnteredName = normalizedName; // トロフィーチェック用に保存
         
         // ランキングに保存
@@ -2633,6 +2808,20 @@ export class GameScene extends Phaser.Scene {
         
         // 名前入力UIを削除
         this.removeNameInputUI();
+    }
+    
+    /**
+     * スクリーンショットをダウンロード
+     */
+    downloadScreenshot(blob) {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `hororo_winter_2026_${Date.now()}.png`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
     }
     
     /**
@@ -2686,7 +2875,7 @@ export class GameScene extends Phaser.Scene {
                 
                 const newRecord = {
                     distance: distance,
-                    name: name.toUpperCase().replace(/[^A-Z]/g, '').substring(0, 5),
+                    name: name.toUpperCase().replace(/[^A-Z0-9]/g, '').substring(0, 5),
                     date: new Date().toISOString()
                 };
                 
@@ -2707,7 +2896,7 @@ export class GameScene extends Phaser.Scene {
             // 名前は入力された文字のみを保存（最大5文字、大文字）
             const newRecord = {
                 distance: distance,
-                name: name.toUpperCase().replace(/[^A-Z]/g, '').substring(0, 5),
+                name: name.toUpperCase().replace(/[^A-Z0-9]/g, '').substring(0, 5),
                 date: new Date().toISOString()
             };
             

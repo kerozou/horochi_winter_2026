@@ -20,6 +20,19 @@ export class TrophyScene extends Phaser.Scene {
         if (!this.cache.audio.exists('deci')) {
             this.load.audio('deci', 'resources/deci.mp3');
         }
+        
+        // shibou.jsonを読み込む
+        if (!this.cache.json.exists('shibou')) {
+            this.load.json('shibou', 'resources/shibou.json');
+        }
+        
+        // 画像を読み込む
+        if (!this.textures.exists('iei')) {
+            this.load.image('iei', 'resources/iei.png');
+        }
+        if (!this.textures.exists('horonbia')) {
+            this.load.image('horonbia', 'resources/horonbia.jpg');
+        }
     }
     
     create() {
@@ -52,23 +65,33 @@ export class TrophyScene extends Phaser.Scene {
         const trophies = this.getTrophyList();
         const unlockedTrophies = this.loadUnlockedTrophies();
         
-        // トロフィーグリッドを表示（ロケットエディタのパーツ選択と同じスタイル）
-        const gridStartX = 100;
-        const gridStartY = 150;
-        const cellSize = 80; // セルサイズ
-        const gridCols = 5; // 5列
-        const gridRows = 2; // 2行
+        // トロフィーグリッドを表示（12×12の碁盤目状）
+        const gridStartX = 50;
+        const gridStartY = 120;
+        const cellSize = Math.min((screenWidth - 100) / 12, (screenHeight - 250) / 12); // セルサイズ
+        const gridCols = 12; // 12列
+        const gridRows = 12; // 12行
         
-        // グリッドタイトル
-        this.add.text(gridStartX + (gridCols * cellSize) / 2, gridStartY - 30, 'トロフィー選択', {
-            fontSize: '24px',
-            fill: '#ffffff',
-            fontStyle: 'bold'
-        }).setOrigin(0.5);
+        // グリッドタイトル（非表示）
+        // this.add.text(gridStartX + (gridCols * cellSize) / 2, gridStartY - 30, 'トロフィー選択', {
+        //     fontSize: '24px',
+        //     fill: '#ffffff',
+        //     fontStyle: 'bold'
+        // }).setOrigin(0.5);
         
         // ホバー時の説明テキスト用の変数
         this.hoverTooltip = null;
         this.selectedTrophy = null;
+        
+        // 右上に画像表示領域を作成
+        const imageX = screenWidth - 300;
+        const imageY = 290;
+        this.trophyImage = this.add.image(imageX, imageY, 'iei');
+        this.trophyImage.setScrollFactor(0);
+        this.trophyImage.setDepth(150);
+        this.trophyImage.setOrigin(0.5);
+        this.trophyImage.setScale(0.5);
+        this.trophyImage.setVisible(false); // 初期状態では非表示
         
         // 各トロフィーをグリッドに配置
         trophies.forEach((trophy, index) => {
@@ -115,92 +138,112 @@ export class TrophyScene extends Phaser.Scene {
     }
     
     /**
-     * トロフィーリストを取得（10個の実績）
-     * GameSceneのgenerateTrophiesForCheck()と対応するIDを使用
+     * トロフィーリストを取得（144個：12×12）
+     * 達成条件：飛距離、shibou.jsonのメッセージ回収、プレイ回数、ランク上位達成
      */
     getTrophyList() {
-        return [
-            {
-                id: 'trophy_1',
-                name: '初プレイ',
-                description: '1回プレイする',
+        const trophies = [];
+        
+        // 飛距離トロフィー（56個）
+        // 1000m刻みで50000mまで（50個）
+        for (let i = 1; i <= 50; i++) {
+            const distance = i * 1000;
+            trophies.push({
+                id: `trophy_distance_${distance}`,
+                name: `${distance}m達成`,
+                description: `飛距離${distance}mを達成`,
+                condition: 'distance',
+                threshold: distance
+            });
+        }
+        
+        // 10000m刻みで100000mまで（6個：60000, 70000, 80000, 90000, 100000）
+        for (let i = 6; i <= 10; i++) {
+            const distance = i * 10000;
+            trophies.push({
+                id: `trophy_distance_${distance}`,
+                name: `${distance}m達成`,
+                description: `飛距離${distance}mを達成`,
+                condition: 'distance',
+                threshold: distance
+            });
+        }
+        
+        // shibou.jsonのメッセージ回収トロフィー（30個）
+        for (let i = 1; i <= 30; i++) {
+            trophies.push({
+                id: `trophy_shibou_${i}`,
+                name: `メッセージ${i}回収`,
+                description: `着陸メッセージ${i}を回収`,
+                condition: 'shibou',
+                shibouNum: i
+            });
+        }
+        
+        // プレイ回数トロフィー（10個：10回刻みで100回まで）
+        for (let i = 1; i <= 10; i++) {
+            const count = i * 10;
+            trophies.push({
+                id: `trophy_playcount_${count}`,
+                name: `${count}回プレイ`,
+                description: `${count}回プレイする`,
                 condition: 'playCount',
-                threshold: 1,
-                reward: '報酬無し'
-            },
-            {
-                id: 'trophy_2',
-                name: '20000m達成',
-                description: '飛距離20000mを達成',
-                condition: 'distance',
-                threshold: 20000,
-                reward: 'ランクマッチモード解放'
-            },
-            {
-                id: 'trophy_3',
-                name: '30000m達成',
-                description: '飛距離30000mを達成',
-                condition: 'distance',
-                threshold: 30000,
-                reward: 'お気に入りダウンロードを開放'
-            },
-            {
-                id: 'trophy_4',
-                name: '50000m達成',
-                description: '飛距離50000mを達成',
-                condition: 'distance',
-                threshold: 50000,
-                reward: '重力制御の解放'
-            },
-            {
-                id: 'trophy_5',
-                name: '10回プレイする',
-                description: '10回プレイする',
-                condition: 'playCount',
-                threshold: 10,
-                reward: '赤パーツ開放'
-            },
-            {
-                id: 'trophy_6',
-                name: '100回プレイする',
-                description: '100回プレイする',
-                condition: 'playCount',
-                threshold: 100,
-                reward: 'ほろっちの嘔吐動画1解放'
-            },
-            {
-                id: 'trophy_7',
-                name: 'ランクマッチでメダルを獲得する',
-                description: 'ランクマッチでメダルを獲得する',
-                condition: 'rankMatchMedal',
-                threshold: 3, // 3位以内
-                reward: 'ほろっちの嘔吐動画2解放'
-            },
-            {
-                id: 'trophy_8',
-                name: '100000m達成',
-                description: '飛距離100000mを達成',
-                condition: 'distance',
-                threshold: 100000,
-                reward: 'ほろっちの嘔吐動画3解放'
-            },
-            {
-                id: 'trophy_9',
-                name: '-20000m達成',
-                description: '飛距離-20000mを達成',
+                threshold: count
+            });
+        }
+        
+        // ランク上位達成トロフィー（3個：1位、2位、3位各1回）
+        trophies.push({
+            id: 'trophy_rank_1_1',
+            name: '1位達成',
+            description: 'ランクマッチで1位を達成',
+            condition: 'rankMatch',
+            rank: 1,
+            threshold: 1
+        });
+        trophies.push({
+            id: 'trophy_rank_2_1',
+            name: '2位達成',
+            description: 'ランクマッチで2位を達成',
+            condition: 'rankMatch',
+            rank: 2,
+            threshold: 1
+        });
+        trophies.push({
+            id: 'trophy_rank_3_1',
+            name: '3位達成',
+            description: 'ランクマッチで3位を達成',
+            condition: 'rankMatch',
+            rank: 3,
+            threshold: 1
+        });
+        
+        // マイナス飛距離トロフィー（32個）
+        // -1000m刻みで-30000mまで（30個）
+        for (let i = 1; i <= 30; i++) {
+            const distance = -i * 1000;
+            trophies.push({
+                id: `trophy_negative_distance_${Math.abs(distance)}`,
+                name: `${distance}m達成`,
+                description: `飛距離${distance}mを達成`,
                 condition: 'negativeDistance',
-                threshold: -20000,
-                reward: 'ほろっちの嘔吐動画4解放'
-            },
-            {
-                id: 'trophy_10',
-                name: 'ランクマッチで金メダルを獲得する',
-                description: 'ランクマッチで金メダルを獲得する',
-                condition: 'rankMatchGoldMedal',
-                threshold: 1, // 1位
-                reward: 'ほろっちの嘔吐動画5解放'
-            }
-        ];
+                threshold: distance
+            });
+        }
+        
+        // -10000m刻みで-50000mまで（2個：-40000, -50000）
+        for (let i = 4; i <= 5; i++) {
+            const distance = -i * 10000;
+            trophies.push({
+                id: `trophy_negative_distance_${Math.abs(distance)}`,
+                name: `${distance}m達成`,
+                description: `飛距離${distance}mを達成`,
+                condition: 'negativeDistance',
+                threshold: distance
+            });
+        }
+        
+        return trophies;
     }
     
     /**
@@ -208,7 +251,60 @@ export class TrophyScene extends Phaser.Scene {
      */
     loadUnlockedTrophies() {
         const saved = localStorage.getItem('unlockedTrophies');
-        return saved ? JSON.parse(saved) : [];
+        const unlockedList = saved ? JSON.parse(saved) : [];
+        
+        // 飛距離トロフィーの達成状況をチェック
+        const personalBest = parseInt(localStorage.getItem('personalBest') || '0');
+        const playCount = parseInt(localStorage.getItem('playCount') || '0');
+        
+        // ランクマッチの順位達成回数をカウント
+        const rankCounts = { 1: 0, 2: 0, 3: 0 };
+        // すべてのランクマッチランキングを確認
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && key.startsWith('rankMatchRanking_')) {
+                const ranking = JSON.parse(localStorage.getItem(key) || '[]');
+                // 各日付のランキングで1位、2位、3位をカウント（各日付で1回ずつ）
+                if (ranking.length > 0) rankCounts[1]++;
+                if (ranking.length > 1) rankCounts[2]++;
+                if (ranking.length > 2) rankCounts[3]++;
+            }
+        }
+        
+        const trophies = this.getTrophyList();
+        trophies.forEach(trophy => {
+            if (trophy.condition === 'distance' && personalBest >= trophy.threshold) {
+                if (!unlockedList.includes(trophy.id)) {
+                    unlockedList.push(trophy.id);
+                }
+            } else if (trophy.condition === 'shibou') {
+                // shibou.jsonのメッセージ回収状況をチェック
+                const collectedShibou = JSON.parse(localStorage.getItem('collectedShibou') || '[]');
+                if (collectedShibou.includes(trophy.shibouNum)) {
+                    if (!unlockedList.includes(trophy.id)) {
+                        unlockedList.push(trophy.id);
+                    }
+                }
+            } else if (trophy.condition === 'playCount' && playCount >= trophy.threshold) {
+                if (!unlockedList.includes(trophy.id)) {
+                    unlockedList.push(trophy.id);
+                }
+            } else if (trophy.condition === 'rankMatch' && rankCounts[trophy.rank] >= trophy.threshold) {
+                if (!unlockedList.includes(trophy.id)) {
+                    unlockedList.push(trophy.id);
+                }
+            } else if (trophy.condition === 'negativeDistance' && personalBest <= trophy.threshold) {
+                // マイナス飛距離トロフィー（personalBestがthreshold以下）
+                if (!unlockedList.includes(trophy.id)) {
+                    unlockedList.push(trophy.id);
+                }
+            }
+        });
+        
+        // 更新されたリストを保存
+        localStorage.setItem('unlockedTrophies', JSON.stringify(unlockedList));
+        
+        return unlockedList;
     }
     
     /**
@@ -228,35 +324,32 @@ export class TrophyScene extends Phaser.Scene {
         cell.setScrollFactor(0);
         cell.setDepth(50);
         
-        // 未取得のトロフィーは黒塗りにする
+        // 未取得のトロフィーはグレーアウト
         if (!isUnlocked) {
-            const blackOverlay = this.add.rectangle(x + cellSize / 2, y + cellSize / 2, cellSize, cellSize, 0x000000);
-            blackOverlay.setAlpha(0.7); // 黒塗り（70%の不透明度）
-            blackOverlay.setScrollFactor(0);
-            blackOverlay.setDepth(51);
-            cell._blackOverlay = blackOverlay;
+            cell.setFillStyle(0x555555); // グレーアウト
+            cell.setAlpha(0.5); // 透明度を下げる
         }
         
-        // トロフィーアイコン
-        const iconSize = Math.min(cellSize * 0.4, 32);
-        const trophyIcon = this.add.text(x + cellSize / 2, y + cellSize / 2 - 10, isUnlocked ? '🏆' : '🔒', {
-            fontSize: iconSize + 'px'
-        });
-        trophyIcon.setOrigin(0.5);
-        trophyIcon.setScrollFactor(0);
-        trophyIcon.setDepth(52);
-        if (!isUnlocked) {
-            trophyIcon.setAlpha(0.3); // 未取得は薄く
-        }
+        // トロフィーアイコンは非表示
+        // const iconSize = Math.min(cellSize * 0.4, 32);
+        // const trophyIcon = this.add.text(x + cellSize / 2, y + cellSize / 2 - 10, isUnlocked ? '🏆' : '🔒', {
+        //     fontSize: iconSize + 'px'
+        // });
+        // trophyIcon.setOrigin(0.5);
+        // trophyIcon.setScrollFactor(0);
+        // trophyIcon.setDepth(52);
+        // if (!isUnlocked) {
+        //     trophyIcon.setAlpha(0.3); // 未取得は薄く
+        // }
         
-        // トロフィー名
-        const nameFontSize = Math.min(cellSize * 0.12, 12);
-        const trophyName = this.add.text(x + cellSize / 2, y + cellSize / 2 + 20, trophy.name, {
+        // トロフィー名（小さく表示）
+        const nameFontSize = Math.min(cellSize * 0.15, 10);
+        const trophyName = this.add.text(x + cellSize / 2, y + cellSize / 2, trophy.name, {
             fontSize: nameFontSize + 'px',
-            fill: isUnlocked ? '#ffffff' : '#666666',
+            fill: isUnlocked ? '#ffffff' : '#888888',
             fontStyle: 'bold',
             align: 'center',
-            wordWrap: { width: cellSize - 10 }
+            wordWrap: { width: cellSize - 4 }
         });
         trophyName.setOrigin(0.5);
         trophyName.setScrollFactor(0);
@@ -267,11 +360,17 @@ export class TrophyScene extends Phaser.Scene {
             cell.setFillStyle(0x3498db);
             cell.setStrokeStyle(3, 0x5dade2);
             this.updateTrophyDetailPanel(trophy, isUnlocked);
+            // 右上の画像を更新
+            this.updateTrophyImage(isUnlocked);
         });
         
         cell.on('pointerout', () => {
             cell.setFillStyle(bgColor);
             cell.setStrokeStyle(2, isUnlocked ? 0x00ff00 : 0x7f8c8d);
+            // 画像を非表示
+            if (this.trophyImage) {
+                this.trophyImage.setVisible(false);
+            }
         });
         
         // クリックで詳細表示
@@ -282,7 +381,7 @@ export class TrophyScene extends Phaser.Scene {
         
         // トロフィー情報を保存
         cell.trophy = trophy;
-        cell._iconText = trophyIcon;
+        // cell._iconText = trophyIcon;
         cell._nameText = trophyName;
     }
     
@@ -290,8 +389,8 @@ export class TrophyScene extends Phaser.Scene {
      * トロフィー詳細パネルを作成（ロケットエディタのパーツ詳細パネルと同じスタイル）
      */
     createTrophyDetailPanel() {
-        const panelX = 100;
-        const panelY = 350; // トロフィーグリッドの下に配置
+        const panelX = 700;
+        const panelY = 460; // トロフィーグリッドの下に配置
         const panelWidth = 400;
         const panelHeight = 200;
         
@@ -360,6 +459,32 @@ export class TrophyScene extends Phaser.Scene {
     }
     
     /**
+     * 右上のトロフィー画像を更新
+     */
+    updateTrophyImage(isUnlocked) {
+        if (!this.trophyImage) {
+            return;
+        }
+        
+        // 達成状況に応じて画像を変更
+        if (isUnlocked) {
+            // 達成済み：horonbia.jpg
+            if (this.textures.exists('horonbia')) {
+                this.trophyImage.setTexture('horonbia');
+                this.trophyImage.setScale(0.35);
+            }
+        } else {
+            // 未達成：iei.png
+            if (this.textures.exists('iei')) {
+                this.trophyImage.setTexture('iei');
+                this.trophyImage.setScale(1);
+            }
+        }
+        
+        this.trophyImage.setVisible(true);
+    }
+    
+    /**
      * トロフィー詳細パネルを更新
      */
     updateTrophyDetailPanel(trophy, isUnlocked) {
@@ -377,12 +502,29 @@ export class TrophyScene extends Phaser.Scene {
         
         // 情報を更新
         this.detailPanel.nameText.setText(trophy.name);
-        this.detailPanel.descText.setText(trophy.description);
-        this.detailPanel.rewardText.setText(`報酬: ${trophy.reward}`);
+        
+        // shibouトロフィーで達成済みの場合、descriptionの後ろにメッセージ内容を追加
+        let displayDescription = trophy.description;
+        if (trophy.condition === 'shibou' && isUnlocked && trophy.shibouNum) {
+            const shibouData = this.cache.json.get('shibou');
+            if (shibouData) {
+                const shibouMessage = shibouData.find(item => item.num === trophy.shibouNum);
+                if (shibouMessage && shibouMessage.text) {
+                    displayDescription = `${trophy.description}\n${shibouMessage.text}`;
+                }
+            }
+        }
+        
+        this.detailPanel.descText.setText(displayDescription);
+        // 報酬は非表示
+        // this.detailPanel.rewardText.setText(`報酬: ${trophy.reward}`);
+        this.detailPanel.rewardText.setVisible(false);
         this.detailPanel.statusText.setText(isUnlocked ? '✅ 達成済み' : '❌ 未達成');
         this.detailPanel.statusText.setFill(isUnlocked ? '#00ff00' : '#ff0000');
-        this.detailPanel.iconText.setText(isUnlocked ? '🏆' : '🔒');
-        this.detailPanel.iconText.setAlpha(isUnlocked ? 1.0 : 0.5);
+        // アイコンは非表示
+        // this.detailPanel.iconText.setText(isUnlocked ? '🏆' : '🔒'); 
+        // this.detailPanel.iconText.setAlpha(isUnlocked ? 1.0 : 0.5);
+        this.detailPanel.iconText.setVisible(false);
     }
     
     /**
@@ -415,7 +557,22 @@ export class TrophyScene extends Phaser.Scene {
         tooltipName.setDepth(301);
         
         // 説明文
-        const tooltipDesc = this.add.text(x, tooltipY + 10, trophy.description, {
+        // 達成済みかどうかを確認（ツールチップでは未達成でも表示するため、ここでは常にメッセージを追加しない）
+        // ただし、達成済みの場合のみメッセージを追加する
+        const unlockedTrophies = this.loadUnlockedTrophies();
+        const isUnlocked = unlockedTrophies.includes(trophy.id);
+        let tooltipDescription = trophy.description;
+        if (trophy.condition === 'shibou' && isUnlocked && trophy.shibouNum) {
+            const shibouData = this.cache.json.get('shibou');
+            if (shibouData) {
+                const shibouMessage = shibouData.find(item => item.num === trophy.shibouNum);
+                if (shibouMessage && shibouMessage.text) {
+                    tooltipDescription = `${trophy.description}\n${shibouMessage.text}`;
+                }
+            }
+        }
+        
+        const tooltipDesc = this.add.text(x, tooltipY + 10, tooltipDescription, {
             fontSize: '14px',
             fill: '#ffffff',
             align: 'center',
@@ -474,14 +631,14 @@ export class TrophyScene extends Phaser.Scene {
         const panelBg = this.add.rectangle(0, 0, panelWidth, panelHeight, 0x2c3e50);
         panelBg.setStrokeStyle(3, isUnlocked ? 0x00ff00 : 0xffffff);
         
-        // トロフィーアイコン
-        const icon = this.add.text(0, -120, isUnlocked ? '🏆' : '🔒', {
-            fontSize: '80px'
-        });
-        icon.setOrigin(0.5);
+        // トロフィーアイコンは非表示
+        // const icon = this.add.text(0, -120, isUnlocked ? '🏆' : '🔒', {
+        //     fontSize: '80px'
+        // });
+        // icon.setOrigin(0.5);
         
         // トロフィー名
-        const nameText = this.add.text(0, -20, trophy.name, {
+        const nameText = this.add.text(0, -60, trophy.name, {
             fontSize: '32px',
             fill: '#ffffff',
             fontStyle: 'bold'
@@ -489,7 +646,19 @@ export class TrophyScene extends Phaser.Scene {
         nameText.setOrigin(0.5);
         
         // 説明文
-        const descText = this.add.text(0, 40, trophy.description, {
+        // shibouトロフィーで達成済みの場合、descriptionの後ろにメッセージ内容を追加
+        let displayDescription = trophy.description;
+        if (trophy.condition === 'shibou' && isUnlocked && trophy.shibouNum) {
+            const shibouData = this.cache.json.get('shibou');
+            if (shibouData) {
+                const shibouMessage = shibouData.find(item => item.num === trophy.shibouNum);
+                if (shibouMessage && shibouMessage.text) {
+                    displayDescription = `${trophy.description}\n${shibouMessage.text}`;
+                }
+            }
+        }
+        
+        const descText = this.add.text(0, 0, displayDescription, {
             fontSize: '20px',
             fill: '#ffffff',
             align: 'center',
@@ -497,16 +666,16 @@ export class TrophyScene extends Phaser.Scene {
         });
         descText.setOrigin(0.5);
         
-        // 報酬
-        const rewardText = this.add.text(0, 100, `報酬: ${trophy.reward}`, {
-            fontSize: '18px',
-            fill: isUnlocked ? '#00ff00' : '#999999',
-            fontStyle: 'bold'
-        });
-        rewardText.setOrigin(0.5);
+        // 報酬は非表示
+        // const rewardText = this.add.text(0, 100, `報酬: ${trophy.reward}`, {
+        //     fontSize: '18px',
+        //     fill: isUnlocked ? '#00ff00' : '#999999',
+        //     fontStyle: 'bold'
+        // });
+        // rewardText.setOrigin(0.5);
         
         // 状態
-        const statusText = this.add.text(0, 130, isUnlocked ? '✅ 達成済み' : '❌ 未達成', {
+        const statusText = this.add.text(0, 60, isUnlocked ? '✅ 達成済み' : '❌ 未達成', {
             fontSize: '24px',
             fill: isUnlocked ? '#00ff00' : '#ff0000',
             fontStyle: 'bold'
@@ -514,7 +683,7 @@ export class TrophyScene extends Phaser.Scene {
         statusText.setOrigin(0.5);
         
         // 閉じるボタン
-        const closeButton = this.add.container(0, 160);
+        const closeButton = this.add.container(0, 120);
         const closeBg = this.add.rectangle(0, 0, 200, 50, 0x7f8c8d);
         closeBg.setStrokeStyle(2, 0xffffff);
         const closeText = this.add.text(0, 0, '閉じる', {
@@ -548,7 +717,7 @@ export class TrophyScene extends Phaser.Scene {
             }
         });
         
-        detailPanel.add([panelBg, icon, nameText, descText, rewardText, statusText, closeButton]);
+        detailPanel.add([panelBg, nameText, descText, statusText, closeButton]);
         
         // 参照を保存
         this.trophyDetailOverlay = this.add.container(0, 0);
