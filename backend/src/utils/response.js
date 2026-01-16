@@ -19,6 +19,22 @@ function successResponse(data, statusCode = 200) {
 }
 
 function errorResponse(statusCode = 400, message = 'Error', error = null) {
+    // エラーオブジェクトを安全にシリアライズ
+    let errorDetails = null;
+    if (error) {
+        if (typeof error === 'string') {
+            errorDetails = error;
+        } else if (error instanceof Error) {
+            errorDetails = {
+                message: error.message,
+                name: error.name,
+                ...(error.stack && process.env.NODE_ENV !== 'production' && { stack: error.stack })
+            };
+        } else {
+            errorDetails = error;
+        }
+    }
+    
     const response = {
         statusCode,
         headers: {
@@ -31,7 +47,7 @@ function errorResponse(statusCode = 400, message = 'Error', error = null) {
         body: JSON.stringify({
             success: false,
             message,
-            ...(error && { error: error.message || error })
+            ...(errorDetails && { error: errorDetails })
         })
     };
     

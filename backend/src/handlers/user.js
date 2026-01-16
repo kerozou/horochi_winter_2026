@@ -10,8 +10,21 @@ const { generateUserId, validateUserId, normalizeUserId } = require('../utils/us
  */
 async function login(event) {
     try {
+        console.log('Login request received:', {
+            hasBody: !!event.body,
+            bodyLength: event.body ? event.body.length : 0
+        });
+        
         const db = DatabaseAdapterFactory.create();
-        const body = JSON.parse(event.body || '{}');
+        
+        let body;
+        try {
+            body = JSON.parse(event.body || '{}');
+        } catch (parseError) {
+            console.error('JSON parse error:', parseError);
+            return errorResponse(400, 'Invalid JSON in request body', parseError);
+        }
+        
         const { userId, password } = body;
 
         if (!userId || !password) {
@@ -25,13 +38,17 @@ async function login(event) {
         }
 
         // ユーザーIDでユーザーを取得
+        console.log('Fetching user:', normalizedUserId);
         const userData = await db.getUser(normalizedUserId);
         if (!userData) {
+            console.log('User not found:', normalizedUserId);
             return unauthorizedResponse('Invalid user ID or password');
         }
 
+        console.log('Verifying password for user:', normalizedUserId);
         const isValid = await verifyPassword(password, userData.passwordHash);
         if (!isValid) {
+            console.log('Password verification failed for user:', normalizedUserId);
             return unauthorizedResponse('Invalid user ID or password');
         }
 
@@ -43,7 +60,12 @@ async function login(event) {
             token
         });
     } catch (error) {
-        console.error('Login error:', error);
+        console.error('Login error:', {
+            message: error.message,
+            name: error.name,
+            stack: error.stack,
+            error: error
+        });
         return errorResponse(500, 'Internal server error', error);
     }
 }
@@ -117,7 +139,12 @@ async function register(event) {
             token
         }, 201);
     } catch (error) {
-        console.error('Register error:', error);
+        console.error('Register error:', {
+            message: error.message,
+            name: error.name,
+            stack: error.stack,
+            error: error
+        });
         return errorResponse(500, 'Internal server error', error);
     }
 }
