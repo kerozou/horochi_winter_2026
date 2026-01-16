@@ -3,6 +3,7 @@ import { LaunchPoint } from '../domain/LaunchPoint.js';
 import { TrajectoryCalculator } from '../domain/TrajectoryCalculator.js';
 import { GameConfig } from '../config/gameConfig.js';
 import { RocketDesign } from '../entities/RocketDesign.js';
+import { getApiClient } from '../utils/apiClient.js';
 
 /**
  * メインゲームシーン
@@ -1777,7 +1778,9 @@ export class GameScene extends Phaser.Scene {
             this.checkAndUnlockTrophies(finalDistance, finalSpeedKmh);
             
             // 着陸時にリザルト表示を開始（アイリスアウトは裏で継続）
-            this.showResultScreen(finalDistance, finalSpeedKmh);
+            this.showResultScreen(finalDistance, finalSpeedKmh).catch(error => {
+                console.error('Error showing result screen:', error);
+            });
             
             // 並行してアイリスアウトを縮小
             this.shrinkIrisToFinal();
@@ -1822,7 +1825,12 @@ export class GameScene extends Phaser.Scene {
     /**
      * リザルト画面を表示
      */
-    showResultScreen(finalDistance, finalSpeedKmh) {
+    async showResultScreen(finalDistance, finalSpeedKmh) {
+        // ゲーム終了時にトロフィーデータをまとめて更新
+        await this.syncTrophyDataToAPI().catch(error => {
+            console.error('Error syncing trophy data to API:', error);
+        });
+        
         const screenCenterX = this.cameras.main.width / 2;
         const screenCenterY = this.cameras.main.height / 2;
         const screenWidth = this.cameras.main.width;
@@ -1895,6 +1903,11 @@ export class GameScene extends Phaser.Scene {
                 if (!collectedShibou.includes(selectedShibou.num)) {
                     collectedShibou.push(selectedShibou.num);
                     localStorage.setItem('collectedShibou', JSON.stringify(collectedShibou));
+                    
+                    // APIに保存
+                    this.updateTrophyData({ collectedShibou }).catch(error => {
+                        console.error('Error updating collectedShibou:', error);
+                    });
                 }
                 
                 // テキストを画面中央に表示
@@ -2418,8 +2431,12 @@ export class GameScene extends Phaser.Scene {
             nameInput.style.backgroundColor = '#1a1a2e';
             nameInput.style.color = '#ffffff';
             nameInput.style.zIndex = '402';
-            nameInput.value = 'MGR01';
-            nameInput.placeholder = 'MGR01';
+            
+            // ユーザーIDを取得（localStorageから）
+            const userId = localStorage.getItem('userId') || 'ANON';
+            const defaultName = userId.toUpperCase().replace(/[^A-Z0-9]/g, '').substring(0, 5) || 'ANON';
+            nameInput.value = defaultName;
+            nameInput.placeholder = defaultName;
             
             // アルファベットと数字のみ入力可能にする
             nameInput.addEventListener('input', (e) => {
@@ -2429,7 +2446,8 @@ export class GameScene extends Phaser.Scene {
             // Enterキーで確定
             nameInput.addEventListener('keydown', (e) => {
                 if (e.key === 'Enter') {
-                    this.submitName(finalDistance, nameInput.value || 'AAA');
+                    const inputValue = nameInput.value || defaultName;
+                    this.submitName(finalDistance, inputValue);
                 }
             });
             
@@ -2581,14 +2599,17 @@ export class GameScene extends Phaser.Scene {
             }
             
             // 名前入力から名前を取得してランキング更新
-            let playerName = 'ANON';
+            // ユーザーIDをデフォルト値として使用
+            const userId = localStorage.getItem('userId') || 'ANON';
+            const defaultName = userId.toUpperCase().replace(/[^A-Z0-9]/g, '').substring(0, 5) || 'ANON';
+            let playerName = defaultName;
             if (this.nameInputOverlay && this.nameInputOverlay.nameInput) {
                 const nameInput = this.nameInputOverlay.nameInput;
                 // DOM要素から直接値を取得
-                const inputValue = nameInput.value || nameInput.placeholder || 'ANON';
+                const inputValue = nameInput.value || nameInput.placeholder || defaultName;
                 playerName = inputValue.toUpperCase().replace(/[^A-Z0-9]/g, '').substring(0, 5);
                 if (playerName.length === 0) {
-                    playerName = 'ANON';
+                    playerName = defaultName;
                 }
             }
             
@@ -2792,18 +2813,24 @@ export class GameScene extends Phaser.Scene {
     /**
      * 名前を確定してランキングに保存
      */
-    submitName(distance, name) {
+    async submitName(distance, name) {
         // 名前を正規化（アルファベットと数字のみ、大文字、最大5文字）
         // 入力されていない文字は埋めない
         const normalizedName = name.toUpperCase().replace(/[^A-Z0-9]/g, '').substring(0, 5);
         this.lastEnteredName = normalizedName; // トロフィーチェック用に保存
         
-        // ランキングに保存
-        this.saveDistanceToRanking(distance, normalizedName);
-        
-        // ランクマッチでのメダル獲得トロフィーをチェック（ランキング保存後）
-        if (this.isRankMatch && this.rankMatchDate) {
-            this.checkRankMatchMedalTrophies(distance, normalizedName);
+        try {
+            // ランキングに保存（API呼び出し）
+            await this.saveDistanceToRanking(distance, normalizedName);
+            
+            // ランクマッチでのメダル獲得トロフィーをチェック（ランキング保存後）
+            if (this.isRankMatch && this.rankMatchDate) {
+                await this.checkRankMatchMedalTrophies(distance, normalizedName);
+            }
+        } catch (error) {
+            console.error('Error saving ranking:', error);
+            // エラーが発生してもローカルストレージにフォールバック
+            this.saveDistanceToRankingLocal(distance, normalizedName);
         }
         
         // 名前入力UIを削除
@@ -2827,46 +2854,292 @@ export class GameScene extends Phaser.Scene {
     /**
      * ランクマッチでのメダル獲得トロフィーをチェック
      */
-    checkRankMatchMedalTrophies(distance, name) {
-        const rankingKey = `rankMatchRanking_${this.rankMatchDate}`;
-        const ranking = JSON.parse(localStorage.getItem(rankingKey) || '[]');
-        const sortedRanking = [...ranking].sort((a, b) => b.distance - a.distance);
-        
-        // 現在の記録の順位を確認
-        const currentRecordIndex = sortedRanking.findIndex(r => 
-            Math.abs(r.distance - distance) < 0.01 && 
-            r.name === name
-        );
-        
-        const trophies = this.getNewTrophyList();
-        const existing = localStorage.getItem('unlockedTrophies');
-        const unlockedList = existing ? JSON.parse(existing) : [];
-        
-        // メダル獲得（3位以内）
-        if (currentRecordIndex >= 0 && currentRecordIndex < 3) {
-            const medalTrophy = trophies.find(t => t.id === 'trophy_7');
-            if (medalTrophy && !unlockedList.includes(medalTrophy.id)) {
-                unlockedList.push(medalTrophy.id);
-                localStorage.setItem('unlockedTrophies', JSON.stringify(unlockedList));
-                console.log('Trophy unlocked: trophy_7 (Rank Match Medal)');
+    async checkRankMatchMedalTrophies(distance, name) {
+        try {
+            const apiClient = getApiClient();
+            const authToken = localStorage.getItem('authToken');
+            const response = await apiClient.getRanking('rankMatch', this.rankMatchDate, 10, authToken);
+            const ranking = response.data?.records || [];
+            const sortedRanking = [...ranking].sort((a, b) => b.distance - a.distance);
+            
+            // 現在の記録の順位を確認
+            const currentRecordIndex = sortedRanking.findIndex(r => 
+                Math.abs(r.distance - distance) < 0.01 && 
+                r.name === name
+            );
+            
+            const trophies = this.getNewTrophyList();
+            
+            // メダル獲得（3位以内）
+            if (currentRecordIndex >= 0 && currentRecordIndex < 3) {
+                const medalTrophy = trophies.find(t => t.id === 'trophy_7');
+                if (medalTrophy) {
+                    await this.saveTrophyToAPI(medalTrophy.id);
+                    console.log('Trophy unlocked: trophy_7 (Rank Match Medal)');
+                }
             }
-        }
-        
-        // 金メダル獲得（1位）
-        if (currentRecordIndex === 0) {
-            const goldMedalTrophy = trophies.find(t => t.id === 'trophy_10');
-            if (goldMedalTrophy && !unlockedList.includes(goldMedalTrophy.id)) {
-                unlockedList.push(goldMedalTrophy.id);
-                localStorage.setItem('unlockedTrophies', JSON.stringify(unlockedList));
-                console.log('Trophy unlocked: trophy_10 (Rank Match Gold Medal)');
+            
+            // 金メダル獲得（1位）
+            if (currentRecordIndex === 0) {
+                const goldMedalTrophy = trophies.find(t => t.id === 'trophy_10');
+                if (goldMedalTrophy) {
+                    await this.saveTrophyToAPI(goldMedalTrophy.id);
+                    console.log('Trophy unlocked: trophy_10 (Rank Match Gold Medal)');
+                }
             }
+        } catch (error) {
+            console.error('Error checking rank match medals:', error);
+            // エラー時はローカルストレージから取得
+            const rankingKey = `rankMatchRanking_${this.rankMatchDate}`;
+            const ranking = JSON.parse(localStorage.getItem(rankingKey) || '[]');
+            const sortedRanking = [...ranking].sort((a, b) => b.distance - a.distance);
+            const currentRecordIndex = sortedRanking.findIndex(r => 
+                Math.abs(r.distance - distance) < 0.01 && 
+                r.name === name
+            );
+            
+            const trophies = this.getNewTrophyList();
+            
+            // メダル獲得（3位以内）
+            if (currentRecordIndex >= 0 && currentRecordIndex < 3) {
+                const medalTrophy = trophies.find(t => t.id === 'trophy_7');
+                if (medalTrophy) {
+                    await this.saveTrophyToAPI(medalTrophy.id).catch(err => {
+                        console.error('Error saving medal trophy:', err);
+                    });
+                }
+            }
+            
+            // 金メダル獲得（1位）
+            if (currentRecordIndex === 0) {
+                const goldMedalTrophy = trophies.find(t => t.id === 'trophy_10');
+                if (goldMedalTrophy) {
+                    await this.saveTrophyToAPI(goldMedalTrophy.id).catch(err => {
+                        console.error('Error saving gold medal trophy:', err);
+                    });
+                }
+            }
+            
+            // rankCountsを更新（エラー時も）
+            const rankCounts = { 1: 0, 2: 0, 3: 0 };
+            if (currentRecordIndex === 0) rankCounts[1] = 1;
+            else if (currentRecordIndex === 1) rankCounts[2] = 1;
+            else if (currentRecordIndex === 2) rankCounts[3] = 1;
+            
+            await this.updateTrophyRankCounts(rankCounts).catch(err => {
+                console.error('Error updating rankCounts:', err);
+            });
         }
     }
     
     /**
-     * 距離をランキングに保存
+     * トロフィーデータをAPIに同期（ゲーム終了時に呼び出し）
      */
-    saveDistanceToRanking(distance, name = 'AAA') {
+    async syncTrophyDataToAPI() {
+        try {
+            const apiClient = getApiClient();
+            const authToken = localStorage.getItem('authToken');
+            
+            if (!authToken) {
+                return; // トークンがない場合はスキップ
+            }
+            
+            // 現在のトロフィーデータを取得
+            const response = await apiClient.getTrophies(authToken);
+            const trophyData = response.data || {
+                unlockedTrophies: [],
+                collectedShibou: [],
+                playCount: 0,
+                rankCounts: { 1: 0, 2: 0, 3: 0 }
+            };
+            
+            // ローカルストレージから最新データを取得してマージ
+            const localUnlockedTrophies = JSON.parse(localStorage.getItem('unlockedTrophies') || '[]');
+            const localCollectedShibou = JSON.parse(localStorage.getItem('collectedShibou') || '[]');
+            const localPlayCount = parseInt(localStorage.getItem('playCount') || '0', 10);
+            
+            // マージ（ローカルの方が新しい場合は上書き）
+            trophyData.unlockedTrophies = [...new Set([...trophyData.unlockedTrophies, ...localUnlockedTrophies])];
+            trophyData.collectedShibou = [...new Set([...trophyData.collectedShibou, ...localCollectedShibou])];
+            trophyData.playCount = Math.max(trophyData.playCount || 0, localPlayCount);
+            
+            // rankCountsは既にAPIに保存されているので、そのまま使用
+            
+            // APIに更新
+            await apiClient.updateTrophies(authToken, trophyData);
+            
+            // ローカルストレージも更新
+            localStorage.setItem('unlockedTrophies', JSON.stringify(trophyData.unlockedTrophies));
+            localStorage.setItem('collectedShibou', JSON.stringify(trophyData.collectedShibou));
+            localStorage.setItem('playCount', trophyData.playCount.toString());
+            
+            console.log('Trophy data synced to API');
+        } catch (error) {
+            console.error('Error syncing trophy data to API:', error);
+            throw error;
+        }
+    }
+    
+    /**
+     * トロフィーをAPIに保存
+     */
+    async saveTrophyToAPI(trophyId) {
+        try {
+            const apiClient = getApiClient();
+            const authToken = localStorage.getItem('authToken');
+            
+            if (!authToken) {
+                // トークンがない場合はローカルストレージに保存
+                const existing = localStorage.getItem('unlockedTrophies');
+                const unlockedList = existing ? JSON.parse(existing) : [];
+                if (!unlockedList.includes(trophyId)) {
+                    unlockedList.push(trophyId);
+                    localStorage.setItem('unlockedTrophies', JSON.stringify(unlockedList));
+                }
+                return;
+            }
+            
+            // 現在のトロフィーデータを取得
+            const response = await apiClient.getTrophies(authToken);
+            const trophyData = response.data || {
+                unlockedTrophies: [],
+                collectedShibou: [],
+                playCount: 0,
+                rankCounts: {}
+            };
+            
+            // 新しいトロフィーを追加
+            if (!trophyData.unlockedTrophies.includes(trophyId)) {
+                trophyData.unlockedTrophies.push(trophyId);
+                
+                // APIに更新
+                await apiClient.updateTrophies(authToken, trophyData);
+                
+                // ローカルストレージにも保存
+                localStorage.setItem('unlockedTrophies', JSON.stringify(trophyData.unlockedTrophies));
+            }
+        } catch (error) {
+            console.error('Error saving trophy to API:', error);
+            throw error;
+        }
+    }
+    
+    /**
+     * トロフィーデータを更新（部分更新）
+     */
+    async updateTrophyData(updates) {
+        try {
+            const apiClient = getApiClient();
+            const authToken = localStorage.getItem('authToken');
+            
+            if (!authToken) {
+                // トークンがない場合はローカルストレージのみ更新
+                if (updates.playCount !== undefined) {
+                    localStorage.setItem('playCount', updates.playCount.toString());
+                }
+                if (updates.collectedShibou !== undefined) {
+                    localStorage.setItem('collectedShibou', JSON.stringify(updates.collectedShibou));
+                }
+                return;
+            }
+            
+            // 現在のトロフィーデータを取得
+            const response = await apiClient.getTrophies(authToken);
+            const trophyData = response.data || {
+                unlockedTrophies: [],
+                collectedShibou: [],
+                playCount: 0,
+                rankCounts: {}
+            };
+            
+            // 更新をマージ
+            if (updates.playCount !== undefined) {
+                trophyData.playCount = updates.playCount;
+            }
+            if (updates.collectedShibou !== undefined) {
+                trophyData.collectedShibou = updates.collectedShibou;
+            }
+            
+            // APIに更新
+            await apiClient.updateTrophies(authToken, trophyData);
+            
+            // ローカルストレージにも保存
+            if (updates.playCount !== undefined) {
+                localStorage.setItem('playCount', trophyData.playCount.toString());
+            }
+            if (updates.collectedShibou !== undefined) {
+                localStorage.setItem('collectedShibou', JSON.stringify(trophyData.collectedShibou));
+            }
+        } catch (error) {
+            console.error('Error updating trophy data:', error);
+            throw error;
+        }
+    }
+    
+    /**
+     * rankCountsを更新
+     */
+    async updateTrophyRankCounts(newRankCounts) {
+        try {
+            const apiClient = getApiClient();
+            const authToken = localStorage.getItem('authToken');
+            
+            if (!authToken) {
+                return; // トークンがない場合はスキップ
+            }
+            
+            // 現在のトロフィーデータを取得
+            const response = await apiClient.getTrophies(authToken);
+            const trophyData = response.data || {
+                unlockedTrophies: [],
+                collectedShibou: [],
+                playCount: 0,
+                rankCounts: { 1: 0, 2: 0, 3: 0 }
+            };
+            
+            // rankCountsを更新（累積）
+            trophyData.rankCounts = trophyData.rankCounts || { 1: 0, 2: 0, 3: 0 };
+            if (newRankCounts[1]) trophyData.rankCounts[1] = (trophyData.rankCounts[1] || 0) + newRankCounts[1];
+            if (newRankCounts[2]) trophyData.rankCounts[2] = (trophyData.rankCounts[2] || 0) + newRankCounts[2];
+            if (newRankCounts[3]) trophyData.rankCounts[3] = (trophyData.rankCounts[3] || 0) + newRankCounts[3];
+            
+            // APIに更新
+            await apiClient.updateTrophies(authToken, trophyData);
+        } catch (error) {
+            console.error('Error updating rankCounts:', error);
+            throw error;
+        }
+    }
+    
+    /**
+     * 距離をランキングに保存（API呼び出し）
+     */
+    async saveDistanceToRanking(distance, name = 'AAA') {
+        try {
+            const apiClient = getApiClient();
+            const authToken = localStorage.getItem('authToken');
+            const normalizedName = name.toUpperCase().replace(/[^A-Z0-9]/g, '').substring(0, 5);
+            
+            // ランクマッチモードの場合は日付ベースでランキングを保存
+            if (this.isRankMatch && this.rankMatchDate) {
+                await apiClient.updateRanking('rankMatch', distance, normalizedName, this.rankMatchDate, authToken);
+                console.log('Rank match distance saved to API:', distance, 'm', 'Name:', normalizedName, 'Date:', this.rankMatchDate);
+                return;
+            }
+            
+            // 通常モードの場合は通常のランキングに保存
+            await apiClient.updateRanking('distance', distance, normalizedName, null, authToken);
+            console.log('Distance saved to API:', distance, 'm', 'Name:', normalizedName);
+        } catch (error) {
+            console.error('Error saving distance to ranking API:', error);
+            throw error; // エラーを呼び出し元に伝播
+        }
+    }
+
+    /**
+     * 距離をランキングに保存（ローカルストレージ、フォールバック用）
+     */
+    saveDistanceToRankingLocal(distance, name = 'AAA') {
         try {
             // ランクマッチモードの場合は日付ベースでランキングを保存
             if (this.isRankMatch && this.rankMatchDate) {
@@ -2884,7 +3157,7 @@ export class GameScene extends Phaser.Scene {
                 const top10 = existingRanking.slice(0, 10);
                 
                 localStorage.setItem(rankingKey, JSON.stringify(top10));
-                console.log('Rank match distance saved:', distance, 'm', 'Name:', newRecord.name, 'Date:', this.rankMatchDate);
+                console.log('Rank match distance saved to local:', distance, 'm', 'Name:', newRecord.name, 'Date:', this.rankMatchDate);
                 return;
             }
             
@@ -2892,8 +3165,6 @@ export class GameScene extends Phaser.Scene {
             const rankingKey = 'distanceRanking';
             const existingRanking = JSON.parse(localStorage.getItem(rankingKey) || '[]');
             
-            // 新しい記録を追加（日付と名前も保存）
-            // 名前は入力された文字のみを保存（最大5文字、大文字）
             const newRecord = {
                 distance: distance,
                 name: name.toUpperCase().replace(/[^A-Z0-9]/g, '').substring(0, 5),
@@ -2901,19 +3172,13 @@ export class GameScene extends Phaser.Scene {
             };
             
             existingRanking.push(newRecord);
-            
-            // 距離でソート（降順）
             existingRanking.sort((a, b) => b.distance - a.distance);
-            
-            // 上位10件のみ保持
             const top10 = existingRanking.slice(0, 10);
             
-            // localStorageに保存
             localStorage.setItem(rankingKey, JSON.stringify(top10));
-            
-            console.log('Distance saved to ranking:', distance, 'm', 'Name:', newRecord.name);
+            console.log('Distance saved to local:', distance, 'm', 'Name:', newRecord.name);
         } catch (error) {
-            console.error('Error saving distance to ranking:', error);
+            console.error('Error saving distance to ranking local:', error);
         }
     }
     
@@ -2928,6 +3193,11 @@ export class GameScene extends Phaser.Scene {
         playCount++;
         localStorage.setItem('playCount', playCount.toString());
         console.log('Play count:', playCount);
+        
+        // プレイ回数をAPIに保存
+        this.updateTrophyData({ playCount }).catch(error => {
+            console.error('Error updating play count:', error);
+        });
         
         // トロフィーデータを生成（TrophySceneと同じロジック）
         const trophies = this.getNewTrophyList();
@@ -3003,13 +3273,17 @@ export class GameScene extends Phaser.Scene {
             }
             
             if (unlocked) {
-                // トロフィーをローカルストレージに保存
-                const existing = localStorage.getItem('unlockedTrophies');
-                const unlockedList = existing ? JSON.parse(existing) : [];
-                if (!unlockedList.includes(trophy.id)) {
-                    unlockedList.push(trophy.id);
-                    localStorage.setItem('unlockedTrophies', JSON.stringify(unlockedList));
-                }
+                // トロフィーをAPIに保存
+                this.saveTrophyToAPI(trophy.id).catch(error => {
+                    console.error('Error saving trophy to API:', error);
+                    // エラー時はローカルストレージに保存
+                    const existing = localStorage.getItem('unlockedTrophies');
+                    const unlockedList = existing ? JSON.parse(existing) : [];
+                    if (!unlockedList.includes(trophy.id)) {
+                        unlockedList.push(trophy.id);
+                        localStorage.setItem('unlockedTrophies', JSON.stringify(unlockedList));
+                    }
+                });
                 console.log('Trophy unlocked:', trophy.id);
             }
         });

@@ -35,7 +35,7 @@ export class TrophyScene extends Phaser.Scene {
         }
     }
     
-    create() {
+    async create() {
         const screenWidth = this.cameras.main.width;
         const screenHeight = this.cameras.main.height;
         const centerX = screenWidth / 2;
@@ -63,7 +63,20 @@ export class TrophyScene extends Phaser.Scene {
         
         // トロフィーデータを取得
         const trophies = this.getTrophyList();
-        const unlockedTrophies = this.loadUnlockedTrophies();
+        // ローディング表示
+        const loadingText = this.add.text(centerX, centerY, 'サーバーに問い合わせ中...', {
+            fontSize: '24px',
+            fill: '#ffffff',
+            fontStyle: 'bold'
+        });
+        loadingText.setOrigin(0.5);
+        loadingText.setDepth(200);
+        
+        // APIからトロフィー情報を取得
+        const unlockedTrophies = await this.loadUnlockedTrophies();
+        
+        // ローディング表示を削除
+        loadingText.destroy();
         
         // トロフィーグリッドを表示（12×12の碁盤目状）
         const gridStartX = 50;
@@ -247,9 +260,49 @@ export class TrophyScene extends Phaser.Scene {
     }
     
     /**
-     * 達成済みトロフィーをロード
+     * 達成済みトロフィーをロード（API呼び出し）
      */
-    loadUnlockedTrophies() {
+    async loadUnlockedTrophies() {
+        try {
+            const { getApiClient } = await import('../utils/apiClient.js');
+            const apiClient = getApiClient();
+            const authToken = localStorage.getItem('authToken');
+            
+            if (!authToken) {
+                // トークンがない場合はローカルストレージから取得
+                return this.loadUnlockedTrophiesLocal();
+            }
+            
+            // APIからトロフィー情報を取得
+            const response = await apiClient.getTrophies(authToken);
+            const trophyData = response.data || {};
+            
+            // ローカルストレージにも保存（オフライン対応）
+            if (trophyData.unlockedTrophies) {
+                localStorage.setItem('unlockedTrophies', JSON.stringify(trophyData.unlockedTrophies));
+            }
+            if (trophyData.collectedShibou) {
+                localStorage.setItem('collectedShibou', JSON.stringify(trophyData.collectedShibou));
+            }
+            if (trophyData.playCount !== undefined) {
+                localStorage.setItem('playCount', trophyData.playCount.toString());
+            }
+            
+            // 達成状況を再チェック（最新のゲームデータに基づいて）
+            const unlockedList = await this.checkTrophyAchievements(trophyData);
+            
+            return unlockedList;
+        } catch (error) {
+            console.error('Error loading trophies from API:', error);
+            // エラー時はローカルストレージから取得
+            return this.loadUnlockedTrophiesLocal();
+        }
+    }
+    
+    /**
+     * 達成済みトロフィーをロード（ローカルストレージ、フォールバック用）
+     */
+    loadUnlockedTrophiesLocal() {
         const saved = localStorage.getItem('unlockedTrophies');
         const unlockedList = saved ? JSON.parse(saved) : [];
         
@@ -303,6 +356,44 @@ export class TrophyScene extends Phaser.Scene {
         
         // 更新されたリストを保存
         localStorage.setItem('unlockedTrophies', JSON.stringify(unlockedList));
+        
+        return unlockedList;
+    }
+    
+    /**
+     * トロフィー達成状況をチェック（最新のゲームデータに基づいて）
+     */
+    async checkTrophyAchievements(trophyData) {
+        const unlockedList = [...(trophyData.unlockedTrophies || [])];
+        const personalBest = parseInt(localStorage.getItem('personalBest') || '0');
+        const playCount = trophyData.playCount || parseInt(localStorage.getItem('playCount') || '0');
+        const rankCounts = trophyData.rankCounts || { 1: 0, 2: 0, 3: 0 };
+        const collectedShibou = trophyData.collectedShibou || JSON.parse(localStorage.getItem('collectedShibou') || '[]');
+        
+        const trophies = this.getTrophyList();
+        trophies.forEach(trophy => {
+            if (trophy.condition === 'distance' && personalBest >= trophy.threshold) {
+                if (!unlockedList.includes(trophy.id)) {
+                    unlockedList.push(trophy.id);
+                }
+            } else if (trophy.condition === 'shibou' && collectedShibou.includes(trophy.shibouNum)) {
+                if (!unlockedList.includes(trophy.id)) {
+                    unlockedList.push(trophy.id);
+                }
+            } else if (trophy.condition === 'playCount' && playCount >= trophy.threshold) {
+                if (!unlockedList.includes(trophy.id)) {
+                    unlockedList.push(trophy.id);
+                }
+            } else if (trophy.condition === 'rankMatch' && rankCounts[trophy.rank] >= trophy.threshold) {
+                if (!unlockedList.includes(trophy.id)) {
+                    unlockedList.push(trophy.id);
+                }
+            } else if (trophy.condition === 'negativeDistance' && personalBest <= trophy.threshold) {
+                if (!unlockedList.includes(trophy.id)) {
+                    unlockedList.push(trophy.id);
+                }
+            }
+        });
         
         return unlockedList;
     }

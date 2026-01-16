@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import * as cdk from 'aws-cdk-lib';
 import { StaticSiteStack } from '../lib/StaticSiteStack';
+import { BackendStack } from '../lib/BackendStack';
 import * as dotenv from 'dotenv';
 import * as path from 'path';
 
@@ -21,5 +22,22 @@ new StaticSiteStack(app, stackName, {
   env: {
     account: process.env.CDK_DEFAULT_ACCOUNT,
     region: process.env.CDK_DEFAULT_REGION,
+  },
+});
+
+// バックエンドスタック
+const backendStackName = serviceName
+  ? `${serviceName}-BackendStack`
+  : 'BackendStack';
+
+const stage = process.env.STAGE || 'dev';
+const jwtSecret = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
+
+new BackendStack(app, backendStackName, {
+  stage: stage,
+  jwtSecret: jwtSecret,
+  env: {
+    account: process.env.CDK_DEFAULT_ACCOUNT,
+    region: process.env.CDK_DEFAULT_REGION || 'ap-northeast-1',
   },
 });

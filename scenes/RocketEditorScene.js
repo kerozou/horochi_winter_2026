@@ -24,38 +24,6 @@ export class RocketEditorScene extends Phaser.Scene {
             // ロケット設計データを初期化
             this.rocketDesign = new RocketDesign();
             
-            // 達成済みトロフィーをロード
-            const unlockedTrophies = this.loadUnlockedTrophies();
-            console.log('Unlocked trophies:', unlockedTrophies.length);
-            
-            // すべての通常パーツを取得（レアパーツ除外）
-            // COMPOSITE_PART_TEMPLATESから直接取得して、すべての通常パーツを表示
-            this.availableCompositeParts = COMPOSITE_PART_TEMPLATES.filter(cp => {
-                // レアパーツかどうかを判定
-                const hasRare = cp.parts.some(p => {
-                    const partType = typeof p === 'object' ? p.type : p;
-                    // weightは通常パーツとして使用可能にする
-                    return ['superengine', 'ultralightengine', 'microengine', 'dualengine', 
-                            'ultralightnose', 'reinforcedbody', 'megafueltank', 
-                            'largewing', 'stabilizer'].includes(partType);
-                });
-                // レアパーツは除外
-                return !hasRare;
-            });
-            
-            
-            // コックピットを取得（自動配置用）
-            const allParts = getUnlockedCompositeParts(unlockedTrophies);
-            this.cockpitPart = allParts[0]; // 最初はコックピット
-            
-            // 制限なし - すべての通常パーツを表示
-            console.log('Available composite parts (excluding rare):', this.availableCompositeParts.length, 'parts');
-            console.log('Part names:', this.availableCompositeParts.map(p => p.name));
-            
-            // コックピットを保存（自動配置用）
-            this.cockpitPart = allParts[0]; // 最初はコックピット
-            console.log('Cockpit part saved:', this.cockpitPart?.name);
-            
             console.log('RocketEditorScene: Ready to create new design');
         } catch (error) {
             console.error('Error in RocketEditorScene.init():', error);
@@ -67,9 +35,33 @@ export class RocketEditorScene extends Phaser.Scene {
     /**
      * 達成済みトロフィーをロード
      */
-    loadUnlockedTrophies() {
-        const saved = localStorage.getItem('unlockedTrophies');
-        return saved ? JSON.parse(saved) : [];
+    async loadUnlockedTrophies() {
+        try {
+            const { getApiClient } = await import('../utils/apiClient.js');
+            const apiClient = getApiClient();
+            const authToken = localStorage.getItem('authToken');
+            
+            if (!authToken) {
+                // トークンがない場合はローカルストレージから取得
+                const saved = localStorage.getItem('unlockedTrophies');
+                return saved ? JSON.parse(saved) : [];
+            }
+            
+            // APIからトロフィー情報を取得
+            const response = await apiClient.getTrophies(authToken);
+            const trophyData = response.data || {};
+            const unlockedList = trophyData.unlockedTrophies || [];
+            
+            // ローカルストレージにも保存（オフライン対応）
+            localStorage.setItem('unlockedTrophies', JSON.stringify(unlockedList));
+            
+            return unlockedList;
+        } catch (error) {
+            console.error('Error loading trophies from API:', error);
+            // エラー時はローカルストレージから取得
+            const saved = localStorage.getItem('unlockedTrophies');
+            return saved ? JSON.parse(saved) : [];
+        }
     }
     
     /**
@@ -230,9 +222,37 @@ export class RocketEditorScene extends Phaser.Scene {
         }
     }
     
-    create() {
+    async create() {
         try {
             console.log('RocketEditorScene: create() called');
+            
+            // 達成済みトロフィーをロード
+            const unlockedTrophies = await this.loadUnlockedTrophies();
+            console.log('Unlocked trophies:', unlockedTrophies.length);
+            
+            // すべての通常パーツを取得（レアパーツ除外）
+            // COMPOSITE_PART_TEMPLATESから直接取得して、すべての通常パーツを表示
+            this.availableCompositeParts = COMPOSITE_PART_TEMPLATES.filter(cp => {
+                // レアパーツかどうかを判定
+                const hasRare = cp.parts.some(p => {
+                    const partType = typeof p === 'object' ? p.type : p;
+                    // weightは通常パーツとして使用可能にする
+                    return ['superengine', 'ultralightengine', 'microengine', 'dualengine', 
+                            'ultralightnose', 'reinforcedbody', 'megafueltank', 
+                            'largewing', 'stabilizer'].includes(partType);
+                });
+                // レアパーツは除外
+                return !hasRare;
+            });
+            
+            // コックピットを取得（自動配置用）
+            const allParts = getUnlockedCompositeParts(unlockedTrophies);
+            this.cockpitPart = allParts[0]; // 最初はコックピット
+            
+            // 制限なし - すべての通常パーツを表示
+            console.log('Available composite parts (excluding rare):', this.availableCompositeParts.length, 'parts');
+            console.log('Part names:', this.availableCompositeParts.map(p => p.name));
+            console.log('Cockpit part saved:', this.cockpitPart?.name);
             
             const centerX = this.cameras.main.width / 2;
             
@@ -2119,8 +2139,16 @@ export class RocketEditorScene extends Phaser.Scene {
             this.videoElement.style.visibility = 'hidden';
         }
         
-        // お気に入りデータを取得
-        const favorites = this.loadFavorites();
+        // お気に入りデータを取得（非同期）
+        this.loadFavorites().then(favorites => {
+            this.showFavoritesMenuWithData(favorites, centerX, centerY, screenWidth, screenHeight);
+        });
+    }
+    
+    /**
+     * お気に入りメニューを表示（データ取得後）
+     */
+    showFavoritesMenuWithData(favorites, centerX, centerY, screenWidth, screenHeight) {
         
         // オーバーレイ背景（半透明の黒）
         const overlayBg = this.add.rectangle(
@@ -2168,7 +2196,7 @@ export class RocketEditorScene extends Phaser.Scene {
             // 各お気に入り項目をボタンとして表示
             const itemButtons = [];
             favorites.forEach((fav, index) => {
-                const date = new Date(fav.date);
+                const date = new Date(fav.date || fav.createdAt || Date.now());
                 const dateStr = `${date.getMonth() + 1}/${date.getDate()} ${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`;
                 const yPos = -150 + (index * 70);
                 
@@ -2196,7 +2224,7 @@ export class RocketEditorScene extends Phaser.Scene {
                 });
                 itemButton.on('pointerdown', () => {
                     this.playButtonSound();
-                    this.loadFavorite(fav.id);
+                    this.loadFavorite(fav.favoriteId || fav.id);
                 });
                 
                 // 削除ボタン
@@ -2220,7 +2248,7 @@ export class RocketEditorScene extends Phaser.Scene {
                 });
                 deleteButton.on('pointerdown', () => {
                     this.playButtonSound();
-                    this.showDeleteConfirmDialog(fav.id, fav.name || '無題');
+                    this.showDeleteConfirmDialog(fav.favoriteId || fav.id, fav.name || '無題');
                 });
                 
                 itemContainer.add([itemButton, deleteButton]);
@@ -2512,9 +2540,11 @@ export class RocketEditorScene extends Phaser.Scene {
     /**
      * お気に入りを保存
      */
-    saveFavorite(name) {
+    async saveFavorite(name) {
         try {
-            const favorites = this.loadFavorites();
+            const { getApiClient } = await import('../utils/apiClient.js');
+            const apiClient = getApiClient();
+            const authToken = localStorage.getItem('authToken');
             
             // 配置されたパーツの位置情報を保存
             const placedPartsData = this.placedParts.map(p => ({
@@ -2536,25 +2566,27 @@ export class RocketEditorScene extends Phaser.Scene {
             }));
             
             // 現在のロケット設計を保存
-            const favorite = {
-                id: Date.now().toString(),
+            const favoriteData = {
                 name: name,
                 design: this.rocketDesign.toJSON(),
-                placedParts: placedPartsData,
-                date: new Date().toISOString()
+                placedParts: placedPartsData
             };
             
-            favorites.push(favorite);
-            
-            // 最大10件まで保存
-            if (favorites.length > 10) {
-                favorites.shift(); // 古いものから削除
+            if (authToken) {
+                // APIに保存
+                try {
+                    await apiClient.saveFavorite(authToken, favoriteData);
+                    console.log('Favorite saved to API:', name);
+                } catch (apiError) {
+                    console.error('Error saving favorite to API:', apiError);
+                    // APIエラー時はローカルストレージに保存
+                    this.saveFavoriteLocal(name, favoriteData);
+                }
+            } else {
+                // トークンがない場合はローカルストレージに保存
+                this.saveFavoriteLocal(name, favoriteData);
             }
             
-            // localStorageに保存
-            localStorage.setItem('rocketFavorites', JSON.stringify(favorites));
-            
-            console.log('Favorite saved:', name);
             this.showSuccessMessage(`「${name}」をお気に入りに保存しました！`);
         } catch (error) {
             console.error('Error saving favorite:', error);
@@ -2563,12 +2595,34 @@ export class RocketEditorScene extends Phaser.Scene {
     }
     
     /**
+     * お気に入りをローカルストレージに保存（フォールバック用）
+     */
+    saveFavoriteLocal(name, favoriteData) {
+        const favorites = JSON.parse(localStorage.getItem('rocketFavorites') || '[]');
+        const favorite = {
+            id: Date.now().toString(),
+            ...favoriteData,
+            date: new Date().toISOString()
+        };
+        
+        favorites.push(favorite);
+        
+        // 最大10件まで保存
+        if (favorites.length > 10) {
+            favorites.shift(); // 古いものから削除
+        }
+        
+        localStorage.setItem('rocketFavorites', JSON.stringify(favorites));
+        console.log('Favorite saved to local:', name);
+    }
+    
+    /**
      * お気に入りを読み込み
      */
-    loadFavorite(favoriteId) {
+    async loadFavorite(favoriteId) {
         try {
-            const favorites = this.loadFavorites();
-            const favorite = favorites.find(f => f.id === favoriteId);
+            const favorites = await this.loadFavorites();
+            const favorite = favorites.find(f => (f.favoriteId || f.id) === favoriteId);
             
             if (!favorite) {
                 this.showErrorMessage('お気に入りが見つかりませんでした。');
@@ -2962,13 +3016,31 @@ export class RocketEditorScene extends Phaser.Scene {
     /**
      * お気に入りを読み込む
      */
-    loadFavorites() {
+    async loadFavorites() {
         try {
+            const { getApiClient } = await import('../utils/apiClient.js');
+            const apiClient = getApiClient();
+            const authToken = localStorage.getItem('authToken');
+            
+            if (!authToken) {
+                // トークンがない場合はローカルストレージから取得
+                const saved = localStorage.getItem('rocketFavorites');
+                return saved ? JSON.parse(saved) : [];
+            }
+            
+            // APIからお気に入り一覧を取得
+            const response = await apiClient.getFavorites(authToken);
+            const favorites = response.data || [];
+            
+            // ローカルストレージにも保存（オフライン対応）
+            localStorage.setItem('rocketFavorites', JSON.stringify(favorites));
+            
+            return favorites;
+        } catch (error) {
+            console.error('Error loading favorites from API:', error);
+            // エラー時はローカルストレージから取得
             const saved = localStorage.getItem('rocketFavorites');
             return saved ? JSON.parse(saved) : [];
-        } catch (error) {
-            console.error('Error loading favorites:', error);
-            return [];
         }
     }
     
@@ -3071,20 +3143,42 @@ export class RocketEditorScene extends Phaser.Scene {
     /**
      * お気に入りを削除
      */
-    deleteFavorite(favoriteId) {
+    async deleteFavorite(favoriteId) {
         try {
-            const favorites = this.loadFavorites();
-            const filteredFavorites = favorites.filter(f => f.id !== favoriteId);
+            const { getApiClient } = await import('../utils/apiClient.js');
+            const apiClient = getApiClient();
+            const authToken = localStorage.getItem('authToken');
             
-            // localStorageに保存
-            localStorage.setItem('rocketFavorites', JSON.stringify(filteredFavorites));
+            if (authToken) {
+                // APIから削除
+                try {
+                    await apiClient.deleteFavorite(authToken, favoriteId);
+                    console.log('Favorite deleted from API:', favoriteId);
+                } catch (apiError) {
+                    console.error('Error deleting favorite from API:', apiError);
+                    // APIエラー時はローカルストレージから削除
+                    this.deleteFavoriteLocal(favoriteId);
+                }
+            } else {
+                // トークンがない場合はローカルストレージから削除
+                this.deleteFavoriteLocal(favoriteId);
+            }
             
-            console.log('Favorite deleted:', favoriteId);
             this.showSuccessMessage('お気に入りを削除しました！');
         } catch (error) {
             console.error('Error deleting favorite:', error);
             this.showErrorMessage('お気に入りの削除に失敗しました。');
         }
+    }
+    
+    /**
+     * お気に入りをローカルストレージから削除（フォールバック用）
+     */
+    deleteFavoriteLocal(favoriteId) {
+        const favorites = JSON.parse(localStorage.getItem('rocketFavorites') || '[]');
+        const filteredFavorites = favorites.filter(f => f.id !== favoriteId && f.favoriteId !== favoriteId);
+        localStorage.setItem('rocketFavorites', JSON.stringify(filteredFavorites));
+        console.log('Favorite deleted from local:', favoriteId);
     }
     
     /**

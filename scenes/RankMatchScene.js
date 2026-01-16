@@ -43,7 +43,7 @@ export class RankMatchScene extends Phaser.Scene {
         }
     }
     
-    create() {
+    async create() {
         const screenWidth = this.cameras.main.width;
         const screenHeight = this.cameras.main.height;
         const centerX = screenWidth / 2;
@@ -86,7 +86,7 @@ export class RankMatchScene extends Phaser.Scene {
         this.createBuildArea();
         
         // コックピットを最初から中央に配置
-        this.placeInitialCockpit();
+        await this.placeInitialCockpit();
         
         // 情報パネル
         this.createInfoPanel(today);
@@ -289,9 +289,9 @@ export class RankMatchScene extends Phaser.Scene {
     /**
      * 最初からコックピットを中央に配置
      */
-    placeInitialCockpit() {
+    async placeInitialCockpit() {
         // コックピットを取得
-        const unlockedTrophies = this.loadUnlockedTrophies();
+        const unlockedTrophies = await this.loadUnlockedTrophies();
         const allParts = getUnlockedCompositeParts(unlockedTrophies);
         this.cockpitPart = allParts[0]; // 最初はコックピット
         
@@ -1028,7 +1028,7 @@ export class RankMatchScene extends Phaser.Scene {
     /**
      * ロケットをクリア
      */
-    clearRocket() {
+    async clearRocket() {
         // コックピット以外を削除
         this.placedParts.forEach(placedPart => {
             if (placedPart.sprite.getData('isDeletable')) {
@@ -1037,7 +1037,7 @@ export class RankMatchScene extends Phaser.Scene {
         });
         
         // コックピットを再配置
-        this.placeInitialCockpit();
+        await this.placeInitialCockpit();
     }
     
     /**
@@ -1058,9 +1058,33 @@ export class RankMatchScene extends Phaser.Scene {
     /**
      * 達成済みトロフィーをロード
      */
-    loadUnlockedTrophies() {
-        const saved = localStorage.getItem('unlockedTrophies');
-        return saved ? JSON.parse(saved) : [];
+    async loadUnlockedTrophies() {
+        try {
+            const { getApiClient } = await import('../utils/apiClient.js');
+            const apiClient = getApiClient();
+            const authToken = localStorage.getItem('authToken');
+            
+            if (!authToken) {
+                // トークンがない場合はローカルストレージから取得
+                const saved = localStorage.getItem('unlockedTrophies');
+                return saved ? JSON.parse(saved) : [];
+            }
+            
+            // APIからトロフィー情報を取得
+            const response = await apiClient.getTrophies(authToken);
+            const trophyData = response.data || {};
+            const unlockedList = trophyData.unlockedTrophies || [];
+            
+            // ローカルストレージにも保存（オフライン対応）
+            localStorage.setItem('unlockedTrophies', JSON.stringify(unlockedList));
+            
+            return unlockedList;
+        } catch (error) {
+            console.error('Error loading trophies from API:', error);
+            // エラー時はローカルストレージから取得
+            const saved = localStorage.getItem('unlockedTrophies');
+            return saved ? JSON.parse(saved) : [];
+        }
     }
     
     /**

@@ -70,6 +70,11 @@ export const GameConfig = {
             backgroundColor: '#000000',
             padding: { x: 10, y: 5 }
         }
+    },
+    
+    // API設定
+    api: {
+        baseUrl: (typeof window !== 'undefined' && window.API_BASE_URL) || 'http://localhost:3000'
     }
 };
 

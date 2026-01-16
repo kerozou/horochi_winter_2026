@@ -293,7 +293,7 @@ export class TitleScene extends Phaser.Scene {
         const subtitle = this.add.text(
             rightHalfCenterX,
             centerY - 230,
-            'ver2.5\nナウいロケットを作って皆に自慢しよう！',
+            'ver2.0\nナウいロケットを作って皆に自慢しよう！',
             {
                 fontSize: '28px',
                 fill: '#ffffff',
@@ -889,7 +889,7 @@ export class TitleScene extends Phaser.Scene {
     /**
      * ランキングを表示（左側: ランクマッチ、右側: 距離ランキング）
      */
-    showRanking() {
+    async showRanking() {
         const screenWidth = this.cameras.main.width;
         const screenHeight = this.cameras.main.height;
         const centerX = screenWidth / 2;
@@ -942,9 +942,32 @@ export class TitleScene extends Phaser.Scene {
         });
         leftDateText.setOrigin(0.5);
         
-        // ランクマッチランキングデータを取得
-        const rankMatchKey = `rankMatchRanking_${today}`;
-        const rankMatchRanking = JSON.parse(localStorage.getItem(rankMatchKey) || '[]');
+        // ローディングメッセージを表示
+        const leftLoadingText = this.add.text(0, 0, 'サーバーに問い合わせ中...', {
+            fontSize: '18px',
+            fill: '#ffffff',
+            fontStyle: 'bold'
+        });
+        leftLoadingText.setOrigin(0.5);
+        leftRankMatchPanel.add([leftPanelBg, leftPanelTitle, leftDateText, leftLoadingText]);
+        
+        // ランクマッチランキングデータを取得（API呼び出し）
+        let rankMatchRanking = [];
+        try {
+            const { getApiClient } = await import('../utils/apiClient.js');
+            const apiClient = getApiClient();
+            const authToken = localStorage.getItem('authToken');
+            const response = await apiClient.getRanking('rankMatch', today, 10, authToken);
+            rankMatchRanking = response.data?.records || [];
+        } catch (error) {
+            console.error('Error fetching rank match ranking:', error);
+            // フォールバック: ローカルストレージから取得
+            const rankMatchKey = `rankMatchRanking_${today}`;
+            rankMatchRanking = JSON.parse(localStorage.getItem(rankMatchKey) || '[]');
+        }
+        
+        // ローディングメッセージを削除
+        leftLoadingText.destroy();
         
         // ランクマッチランキング内容（個別のテキストとして表示）
         const rankMatchItems = [];
@@ -1056,9 +1079,32 @@ export class TitleScene extends Phaser.Scene {
         });
         rightPanelTitle.setOrigin(0.5);
         
-        // 距離ランキングデータを取得
-        const distanceRankingKey = 'distanceRanking';
-        const distanceRanking = JSON.parse(localStorage.getItem(distanceRankingKey) || '[]');
+        // ローディングメッセージを表示
+        const rightLoadingText = this.add.text(0, 0, 'サーバーに問い合わせ中...', {
+            fontSize: '18px',
+            fill: '#ffffff',
+            fontStyle: 'bold'
+        });
+        rightLoadingText.setOrigin(0.5);
+        rightDistancePanel.add([rightPanelBg, rightPanelTitle, rightLoadingText]);
+        
+        // 距離ランキングデータを取得（API呼び出し）
+        let distanceRanking = [];
+        try {
+            const { getApiClient } = await import('../utils/apiClient.js');
+            const apiClient = getApiClient();
+            const authToken = localStorage.getItem('authToken');
+            const response = await apiClient.getRanking('distance', null, 10, authToken);
+            distanceRanking = response.data?.records || [];
+        } catch (error) {
+            console.error('Error fetching distance ranking:', error);
+            // フォールバック: ローカルストレージから取得
+            const distanceRankingKey = 'distanceRanking';
+            distanceRanking = JSON.parse(localStorage.getItem(distanceRankingKey) || '[]');
+        }
+        
+        // ローディングメッセージを削除
+        rightLoadingText.destroy();
         
         // 距離ランキング内容（個別のテキストとして表示）
         const distanceItems = [];

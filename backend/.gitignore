@@ -1,0 +1,9 @@
+node_modules/
+.serverless/
+.env
+data/
+*.log
+.DS_Store
+coverage/
+.nyc_output/
+

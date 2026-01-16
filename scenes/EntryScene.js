@@ -4,10 +4,29 @@
 export class EntryScene extends Phaser.Scene {
     constructor() {
         super({ key: 'EntryScene' });
+        this.apiClient = null;
+    }
+    
+    async init() {
+        // apiClientを動的に読み込む（エラーが発生してもゲームは起動できるように）
+        try {
+            const apiClientModule = await import('../utils/apiClient.js');
+            this.apiClient = apiClientModule.apiClient || apiClientModule.getApiClient?.();
+        } catch (error) {
+            console.warn('Failed to load API client:', error);
+            // APIクライアントが読み込めなくてもゲームは起動できるようにする
+        }
     }
     
     create() {
         console.log('EntryScene: create() called');
+        
+        // ユーザーIDとパスワードのキャッシュをクリア
+        localStorage.removeItem('userId');
+        localStorage.removeItem('userPassword');
+        localStorage.removeItem('authToken');
+        localStorage.removeItem('isOfflineMode');
+        console.log('Cleared user authentication cache');
         
         const screenWidth = this.cameras.main.width;
         const screenHeight = this.cameras.main.height;
@@ -22,10 +41,10 @@ export class EntryScene extends Phaser.Scene {
         // タイトルロゴ
         const title = this.add.text(
             centerX,
-            centerY - 100,
-            'ブラウザプレイ推奨',
+            centerY - 200,
+            'Horochi Winter 2026',
             {
-                fontSize: '72px',
+                fontSize: '48px',
                 fill: '#ffffff',
                 fontStyle: 'bold',
                 stroke: '#000000',
@@ -34,56 +53,127 @@ export class EntryScene extends Phaser.Scene {
         );
         title.setOrigin(0.5);
         
-        // サブタイトル
-        const subtitle = this.add.text(
+        // ユーザーID入力ラベル
+        const userIdLabel = this.add.text(
             centerX,
-            centerY - 30,
-            'マウスで遊べます',
-            {
-                fontSize: '32px',
-                fill: '#ffffff',
-                fontStyle: 'italic'
-            }
-        );
-        subtitle.setOrigin(0.5);
-        
-        // 音量注意の表示
-        const volumeWarning = this.add.text(
-            centerX,
-            centerY + 50,
-            '※音量注意',
+            centerY - 100,
+            'ユーザーID（5文字の英数字）',
             {
                 fontSize: '24px',
-                fill: '#ffeb3b',
-                fontStyle: 'bold',
-                stroke: '#ff9800',
-                strokeThickness: 2,
-                backgroundColor: 'rgba(0, 0, 0, 0.6)',
-                padding: { x: 20, y: 10 }
+                fill: '#ffffff'
             }
         );
-        volumeWarning.setOrigin(0.5);
+        userIdLabel.setOrigin(0.5);
+        this.userIdLabel = userIdLabel;
         
-        // 点滅アニメーション（音量注意）
-        this.tweens.add({
-            targets: volumeWarning,
-            alpha: { from: 1, to: 0.5 },
-            duration: 1000,
-            yoyo: true,
-            repeat: -1,
-            ease: 'Sine.easeInOut'
-        });
-        
-        // ゲームをプレイボタン
-        const playButton = this.createButton(
+        // パスワード入力ラベル
+        const passwordLabel = this.add.text(
             centerX,
-            centerY + 150,
-            'ゲームをプレイ',
-            () => {
-                console.log('Transitioning to TitleScene...');
-                this.transitionToTitle();
+            centerY - 20,
+            'パスワード',
+            {
+                fontSize: '24px',
+                fill: '#ffffff'
             }
         );
+        passwordLabel.setOrigin(0.5);
+        this.passwordLabel = passwordLabel;
+        
+        // エラーメッセージ表示用（初期状態では非表示）
+        const errorText = this.add.text(
+            centerX,
+            centerY + 100,
+            '',
+            {
+                fontSize: '20px',
+                fill: '#ff0000',
+                fontStyle: 'bold',
+                backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                padding: { x: 20, y: 10 },
+                wordWrap: { width: 600 }
+            }
+        );
+        errorText.setOrigin(0.5);
+        errorText.setVisible(false);
+        this.errorText = errorText;
+        
+        // HTMLのinput要素を作成
+        const gameContainer = document.getElementById('game-container');
+        if (gameContainer) {
+            const canvasRect = this.game.canvas.getBoundingClientRect();
+            const scaleX = this.game.scale.displaySize.width / this.game.scale.gameSize.width;
+            const scaleY = this.game.scale.displaySize.height / this.game.scale.gameSize.height;
+            
+            // ユーザーID入力フィールド
+            const userIdInputX = canvasRect.left + centerX * scaleX;
+            const userIdInputY = canvasRect.top + (centerY - 60) * scaleY;
+            
+            const userIdInput = document.createElement('input');
+            userIdInput.type = 'text';
+            userIdInput.maxLength = 5;
+            userIdInput.style.position = 'fixed';
+            userIdInput.style.left = (userIdInputX - 100) + 'px';
+            userIdInput.style.top = userIdInputY + 'px';
+            userIdInput.style.width = (200 * scaleX) + 'px';
+            userIdInput.style.height = (35 * scaleY) + 'px';
+            userIdInput.style.fontSize = (20 * scaleX) + 'px';
+            userIdInput.style.textAlign = 'center';
+            userIdInput.style.textTransform = 'uppercase';
+            userIdInput.style.border = '3px solid #ffffff';
+            userIdInput.style.borderRadius = '5px';
+            userIdInput.style.backgroundColor = '#1a1a2e';
+            userIdInput.style.color = '#ffffff';
+            userIdInput.style.zIndex = '1000';
+            userIdInput.placeholder = 'ABC12';
+            
+            // アルファベットと数字のみ入力可能にする
+            userIdInput.addEventListener('input', (e) => {
+                e.target.value = e.target.value.replace(/[^A-Za-z0-9]/g, '').toUpperCase().substring(0, 5);
+            });
+            
+            gameContainer.appendChild(userIdInput);
+            this.userIdInput = userIdInput;
+            
+            // パスワード入力フィールド
+            const passwordInputY = canvasRect.top + (centerY + 20) * scaleY;
+            
+            const passwordInput = document.createElement('input');
+            passwordInput.type = 'password';
+            passwordInput.style.position = 'fixed';
+            passwordInput.style.left = (userIdInputX - 100) + 'px';
+            passwordInput.style.top = passwordInputY + 'px';
+            passwordInput.style.width = (200 * scaleX) + 'px';
+            passwordInput.style.height = (35 * scaleY) + 'px';
+            passwordInput.style.fontSize = (20 * scaleX) + 'px';
+            passwordInput.style.textAlign = 'center';
+            passwordInput.style.border = '3px solid #ffffff';
+            passwordInput.style.borderRadius = '5px';
+            passwordInput.style.backgroundColor = '#1a1a2e';
+            passwordInput.style.color = '#ffffff';
+            passwordInput.style.zIndex = '1000';
+            passwordInput.placeholder = 'パスワード';
+            
+            // Enterキーでログイン
+            passwordInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    this.handleLoginOrRegister();
+                }
+            });
+            
+            gameContainer.appendChild(passwordInput);
+            this.passwordInput = passwordInput;
+        }
+        
+        // 登録/ログインボタン
+        const loginButton = this.createButton(
+            centerX,
+            centerY + 60,
+            '登録/ログイン',
+            () => {
+                this.handleLoginOrRegister();
+            }
+        );
+        this.loginButton = loginButton;
         
         // アニメーション効果（タイトル）
         this.tweens.add({
@@ -95,6 +185,298 @@ export class EntryScene extends Phaser.Scene {
         
         // フェードイン効果
         this.cameras.main.fadeIn(500, 0, 0, 0);
+        
+        // サーバーへの疎通確認
+        this.checkServerConnection();
+    }
+    
+    /**
+     * サーバーへの疎通確認
+     */
+    async checkServerConnection() {
+        const screenWidth = this.cameras.main.width;
+        const screenHeight = this.cameras.main.height;
+        const centerX = screenWidth / 2;
+        
+        // オフラインモード表示用テキスト（初期状態では非表示）
+        const offlineModeText = this.add.text(
+            centerX,
+            screenHeight - 30,
+            '※オフラインモードで接続中',
+            {
+                fontSize: '20px',
+                fill: '#ffff00',
+                fontStyle: 'bold',
+                backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                padding: { x: 15, y: 8 }
+            }
+        );
+        offlineModeText.setOrigin(0.5);
+        offlineModeText.setScrollFactor(0);
+        offlineModeText.setDepth(1000);
+        offlineModeText.setVisible(false);
+        this.offlineModeText = offlineModeText;
+        
+        // APIクライアントが利用可能か確認
+        if (!this.apiClient) {
+            // APIクライアントが利用できない場合はオフラインモード表示
+            this.offlineModeText.setVisible(true);
+            return;
+        }
+        
+        try {
+            // サーバーへの疎通確認（タイムアウトを設定：3秒）
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 3000);
+            
+            try {
+                // 簡単なエンドポイントにリクエストを送る（存在しないエンドポイントでもOK、ネットワークエラーを検出するため）
+                const response = await fetch(`${this.apiClient.baseUrl}/health`, {
+                    method: 'GET',
+                    signal: controller.signal,
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                clearTimeout(timeoutId);
+                
+                // レスポンスが返ってきた場合は接続成功（404でも接続できているとみなす）
+                console.log('Server connection successful');
+                this.offlineModeText.setVisible(false);
+            } catch (error) {
+                clearTimeout(timeoutId);
+                
+                // ネットワークエラー（接続できない）の場合
+                if (error.name === 'AbortError' || 
+                    (error.name === 'TypeError' && error.message.includes('fetch'))) {
+                    console.warn('Server connection failed, showing offline mode message');
+                    this.offlineModeText.setVisible(true);
+                } else {
+                    // その他のエラー（CORSエラーなど）は接続できている可能性があるとみなす
+                    // ただし、明確にネットワークエラーの場合はオフラインモード表示
+                    const errorMessage = error.message || '';
+                    if (errorMessage.includes('Failed to fetch') || 
+                        errorMessage.includes('NetworkError') ||
+                        errorMessage.includes('ERR_CONNECTION_REFUSED')) {
+                        console.warn('Server connection failed, showing offline mode message');
+                        this.offlineModeText.setVisible(true);
+                    } else {
+                        console.log('Server might be reachable (got error but not network error)');
+                        this.offlineModeText.setVisible(false);
+                    }
+                }
+            }
+        } catch (error) {
+            console.warn('Server connection check failed:', error);
+            // エラーが発生した場合はオフラインモードとみなす
+            this.offlineModeText.setVisible(true);
+        }
+    }
+    
+    /**
+     * ログインまたは登録を処理
+     */
+    async handleLoginOrRegister() {
+        const userId = this.userIdInput?.value?.toUpperCase().trim();
+        const password = this.passwordInput?.value;
+        
+        // バリデーション
+        if (!userId || userId.length !== 5) {
+            this.showError('ユーザーIDは5文字の英数字で入力してください');
+            return;
+        }
+        
+        if (!password || password.length === 0) {
+            this.showError('パスワードを入力してください');
+            return;
+        }
+        
+        // ユーザーIDの形式チェック
+        const userIdRegex = /^[A-Z0-9]{5}$/;
+        if (!userIdRegex.test(userId)) {
+            this.showError('ユーザーIDは大文字の英数字のみ使用できます');
+            return;
+        }
+        
+        // エラーメッセージを非表示
+        this.hideError();
+        
+        // オフラインモード（ローカルストレージを使用）
+        const useOfflineMode = () => {
+            // 既存のユーザー情報を確認
+            const savedUserId = localStorage.getItem('userId');
+            const savedPassword = localStorage.getItem('userPassword');
+            
+            // 既存ユーザーの場合、パスワードを確認
+            if (savedUserId === userId && savedPassword) {
+                // パスワードが一致しない場合はエラー
+                if (savedPassword !== password) {
+                    this.showError('ユーザーIDが使用されている、もしくはパスワードを間違えています');
+                    return false;
+                }
+                // パスワードが一致する場合はログイン成功として処理
+                console.log('Offline mode: Login successful for existing user:', userId);
+            } else if (savedUserId && savedUserId !== userId) {
+                // 別のユーザーIDが既に保存されている場合
+                this.showError('ユーザーIDが使用されている、もしくはパスワードを間違えています');
+                return false;
+            } else {
+                // 新規ユーザーの場合、登録として処理
+                console.log('Offline mode: Registering new user:', userId);
+            }
+            
+            // ローカルストレージに保存（新規登録または既存ユーザーのログイン）
+            localStorage.setItem('userId', userId);
+            localStorage.setItem('userPassword', password); // 簡易的な保存（本番環境ではハッシュ化推奨）
+            localStorage.setItem('isOfflineMode', 'true');
+            
+            console.log('Offline mode: User ID saved:', userId);
+            
+            // 入力フィールドをクリア
+            if (this.passwordInput) {
+                this.passwordInput.value = '';
+            }
+            
+            // エラーメッセージを非表示
+            this.hideError();
+            
+            // 入力フォームを削除
+            this.removeInputForms();
+            
+            // ローディング表示
+            this.showLoading();
+            
+            // タイトルシーンに遷移
+            this.transitionToTitle(userId);
+            return true;
+        };
+        
+        // APIクライアントが利用可能か確認
+        if (!this.apiClient) {
+            // APIクライアントが利用できない場合はオフラインモードを使用
+            console.warn('API client not available, using offline mode');
+            useOfflineMode();
+            return;
+        }
+        
+        try {
+            // まずログインを試みる
+            let response;
+            let isNetworkError = false;
+            try {
+                response = await this.apiClient.login(userId, password);
+            } catch (loginError) {
+                // ネットワークエラーの場合はオフラインモードにフォールバック
+                if (loginError.message && (
+                    loginError.message.includes('ネットワークエラー') ||
+                    loginError.message.includes('接続できません') ||
+                    loginError.name === 'TypeError'
+                )) {
+                    console.warn('Network error during login, falling back to offline mode');
+                    isNetworkError = true;
+                } else {
+                    // ログインに失敗した場合は登録を試みる
+                    try {
+                        response = await this.apiClient.register(userId, password);
+                    } catch (registerError) {
+                        // ネットワークエラーの場合はオフラインモードにフォールバック
+                        if (registerError.message && (
+                            registerError.message.includes('ネットワークエラー') ||
+                            registerError.message.includes('接続できません') ||
+                            registerError.name === 'TypeError'
+                        )) {
+                            console.warn('Network error during register, falling back to offline mode');
+                            isNetworkError = true;
+                        } else {
+                            // 登録も失敗した場合
+                            const errorMessage = registerError.message || 'エラーが発生しました';
+                            if (errorMessage.includes('already exists') || errorMessage.includes('User ID already exists')) {
+                                this.showError('ユーザーIDが使用されている、もしくはパスワードを間違えています');
+                            } else {
+                                this.showError('ユーザーIDが使用されている、もしくはパスワードを間違えています');
+                            }
+                            return;
+                        }
+                    }
+                }
+            }
+            
+            // ネットワークエラーの場合はオフラインモードを使用
+            if (isNetworkError) {
+                useOfflineMode();
+                return;
+            }
+            
+            // 成功した場合
+            if (response && response.success && response.data) {
+                // トークンをlocalStorageに保存
+                if (response.data.token) {
+                    localStorage.setItem('authToken', response.data.token);
+                    console.log('Auth token saved');
+                }
+                
+                // ユーザー情報をlocalStorageに保存
+                if (response.data.user && response.data.user.userId) {
+                    localStorage.setItem('userId', response.data.user.userId);
+                    console.log('User ID saved:', response.data.user.userId);
+                }
+                
+                // オフラインモードフラグをクリア
+                localStorage.removeItem('isOfflineMode');
+                
+                // 入力フィールドをクリア
+                if (this.passwordInput) {
+                    this.passwordInput.value = '';
+                }
+                
+                // エラーメッセージを非表示
+                this.hideError();
+                
+                // 入力フォームを削除
+                this.removeInputForms();
+                
+                // ローディング表示
+                this.showLoading();
+                
+                // タイトルシーンに遷移（ユーザーIDを渡す）
+                console.log('Transitioning to TitleScene with userId:', response.data.user?.userId);
+                this.transitionToTitle(response.data.user?.userId);
+            } else {
+                this.showError('ユーザーIDが使用されている、もしくはパスワードを間違えています');
+            }
+        } catch (error) {
+            console.error('Login/Register error:', error);
+            // ネットワークエラーの場合はオフラインモードにフォールバック
+            if (error.message && (
+                error.message.includes('ネットワークエラー') ||
+                error.message.includes('接続できません') ||
+                error.name === 'TypeError'
+            )) {
+                console.warn('Network error, falling back to offline mode');
+                useOfflineMode();
+            } else {
+                this.showError('ユーザーIDが使用されている、もしくはパスワードを間違えています');
+            }
+        }
+    }
+    
+    /**
+     * エラーメッセージを表示
+     */
+    showError(message) {
+        if (this.errorText) {
+            this.errorText.setText(message);
+            this.errorText.setVisible(true);
+        }
+    }
+    
+    /**
+     * エラーメッセージを非表示
+     */
+    hideError() {
+        if (this.errorText) {
+            this.errorText.setVisible(false);
+        }
     }
     
     /**
@@ -155,17 +537,99 @@ export class EntryScene extends Phaser.Scene {
     }
     
     /**
-     * タイトルシーンへの遷移（フェードアウト）
+     * 入力フォームを削除
      */
-    transitionToTitle() {
+    removeInputForms() {
+        // ユーザーID入力フィールドを削除
+        if (this.userIdInput && this.userIdInput.parentNode) {
+            this.userIdInput.parentNode.removeChild(this.userIdInput);
+            this.userIdInput = null;
+        }
+        
+        // パスワード入力フィールドを削除
+        if (this.passwordInput && this.passwordInput.parentNode) {
+            this.passwordInput.parentNode.removeChild(this.passwordInput);
+            this.passwordInput = null;
+        }
+        
+        // ラベルを非表示
+        if (this.userIdLabel) {
+            this.userIdLabel.setVisible(false);
+        }
+        if (this.passwordLabel) {
+            this.passwordLabel.setVisible(false);
+        }
+        
+        // ボタンを非表示
+        if (this.loginButton) {
+            this.loginButton.setVisible(false);
+        }
+    }
+    
+    /**
+     * ローディング表示
+     */
+    showLoading() {
+        const screenWidth = this.cameras.main.width;
+        const screenHeight = this.cameras.main.height;
+        const centerX = screenWidth / 2;
+        const centerY = screenHeight / 2;
+        
+        // ローディングテキスト
+        const loadingText = this.add.text(
+            centerX,
+            centerY,
+            'NowLoading',
+            {
+                fontSize: '48px',
+                fill: '#ffffff',
+                fontStyle: 'bold',
+                stroke: '#000000',
+                strokeThickness: 4
+            }
+        );
+        loadingText.setOrigin(0.5);
+        loadingText.setScrollFactor(0);
+        loadingText.setDepth(2000);
+        
+        // 点滅アニメーション
+        this.tweens.add({
+            targets: loadingText,
+            alpha: { from: 1, to: 0.3 },
+            duration: 800,
+            yoyo: true,
+            repeat: -1,
+            ease: 'Sine.easeInOut'
+        });
+        
+        this.loadingText = loadingText;
+    }
+    
+    /**
+     * タイトルシーンへの遷移（フェードアウト）
+     * @param {string} userId - ユーザーID（オプション）
+     */
+    transitionToTitle(userId = null) {
         const fadeDuration = 500; // フェードアウトの時間（ミリ秒）
+        
+        // ユーザーIDが渡されていない場合はlocalStorageから取得
+        if (!userId) {
+            userId = localStorage.getItem('userId');
+        }
         
         // Phaserのカメラをフェードアウト
         this.cameras.main.fadeOut(fadeDuration, 0, 0, 0);
         
         // フェードアウト完了後にシーン遷移
         this.cameras.main.once('camerafadeoutcomplete', () => {
-            this.scene.start('TitleScene');
+            // ローディングテキストを削除
+            if (this.loadingText) {
+                this.loadingText.destroy();
+                this.loadingText = null;
+            }
+            
+            // ユーザーIDをTitleSceneに渡す
+            this.scene.start('TitleScene', { userId: userId });
         });
     }
     
@@ -174,8 +638,20 @@ export class EntryScene extends Phaser.Scene {
      */
     shutdown() {
         console.log('EntryScene: shutdown() called');
-        // エントリーシーンは静的なUIのみなので、特別なクリーンアップは不要
-        // Phaserが自動的にゲームオブジェクトをクリーンアップします
+        
+        // HTMLのinput要素を削除
+        if (this.userIdInput && this.userIdInput.parentNode) {
+            this.userIdInput.parentNode.removeChild(this.userIdInput);
+        }
+        if (this.passwordInput && this.passwordInput.parentNode) {
+            this.passwordInput.parentNode.removeChild(this.passwordInput);
+        }
+        
+        // ローディングテキストを削除
+        if (this.loadingText) {
+            this.loadingText.destroy();
+            this.loadingText = null;
+        }
     }
 }
 
