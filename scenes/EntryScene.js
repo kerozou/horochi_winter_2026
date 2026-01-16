@@ -96,7 +96,7 @@ export class EntryScene extends Phaser.Scene {
         // エラーメッセージ表示用（初期状態では非表示）
         const errorText = this.add.text(
             centerX,
-            centerY + 100,
+            centerY + 200,
             '',
             {
                 fontSize: '20px',
@@ -120,7 +120,7 @@ export class EntryScene extends Phaser.Scene {
             
             // ユーザーID入力フィールド
             const userIdInputX = canvasRect.left + centerX * scaleX;
-            const userIdInputY = canvasRect.top + (centerY - 60) * scaleY;
+            const userIdInputY = canvasRect.top - 20 + (centerY - 60) * scaleY;
             
             const userIdInput = document.createElement('input');
             userIdInput.type = 'text';
@@ -149,7 +149,7 @@ export class EntryScene extends Phaser.Scene {
             this.userIdInput = userIdInput;
             
             // パスワード入力フィールド
-            const passwordInputY = canvasRect.top + (centerY + 20) * scaleY;
+            const passwordInputY = canvasRect.top - 20 + (centerY + 20) * scaleY;
             
             const passwordInput = document.createElement('input');
             passwordInput.type = 'password';
@@ -181,7 +181,7 @@ export class EntryScene extends Phaser.Scene {
         // 登録/ログインボタン
         const loginButton = this.createButton(
             centerX,
-            centerY + 60,
+            centerY + 100,
             '登録/ログイン',
             () => {
                 this.handleLoginOrRegister();
@@ -222,7 +222,7 @@ export class EntryScene extends Phaser.Scene {
         const offlineModeText = this.add.text(
             centerX,
             screenHeight - 30,
-            '※オフラインモードで接続中',
+            '',
             {
                 fontSize: '20px',
                 fill: '#ffff00',
@@ -261,52 +261,25 @@ export class EntryScene extends Phaser.Scene {
                 });
                 clearTimeout(timeoutId);
                 
-                // レスポンスが返ってきた場合は接続成功（404、502、500でもAPI Gatewayに接続できているとみなす）
-                // 404: エンドポイントが存在しない（API Gatewayに接続できている）
-                // 502/500: Lambda関数でエラー（API Gatewayに接続できている）
-                // 200: 正常（API Gatewayに接続できている）
-                console.log('Server connection successful, status:', response.status);
-                this.offlineModeText.setVisible(false);
+                // 200 OKの場合は接続成功
+                if (response.ok) {
+                    console.log('Server connection successful, status:', response.status);
+                    this.offlineModeText.setVisible(false);
+                } else {
+                    // 200以外のステータスコードの場合は疎通できないとみなす
+                    console.warn('Server connection failed, status:', response.status);
+                    this.offlineModeText.setVisible(true);
+                }
             } catch (error) {
                 clearTimeout(timeoutId);
                 
-                console.log('Server connection check error:', {
+                console.warn('Server connection check error:', {
                     name: error.name,
-                    message: error.message,
-                    type: typeof error
+                    message: error.message
                 });
                 
-                // タイムアウトエラーの場合
-                if (error.name === 'AbortError') {
-                    console.warn('Server connection timeout, showing offline mode message');
-                    this.offlineModeText.setVisible(true);
-                    return;
-                }
-                
-                // TypeError（Failed to fetch）の場合、詳細を確認
-                if (error.name === 'TypeError' && error.message.includes('fetch')) {
-                    // 実際のネットワークエラーかどうかを判断するため、エラーメッセージを確認
-                    const errorMessage = error.message || '';
-                    
-                    // 明確にネットワーク接続エラーの場合のみオフラインモード表示
-                    // CORSエラーや502エラーなどは、API Gatewayに接続できているとみなす
-                    if (errorMessage.includes('ERR_CONNECTION_REFUSED') ||
-                        errorMessage.includes('ERR_NAME_NOT_RESOLVED') ||
-                        errorMessage.includes('ERR_NETWORK_CHANGED') ||
-                        errorMessage.includes('ERR_INTERNET_DISCONNECTED')) {
-                        console.warn('Network connection error, showing offline mode message');
-                        this.offlineModeText.setVisible(true);
-                    } else {
-                        // その他のエラー（CORS、502など）はAPI Gatewayに接続できているとみなす
-                        // Failed to fetchはCORSエラーの可能性が高いが、API Gatewayには接続できている
-                        console.log('API Gateway is reachable (got error but not network connection error). Error:', errorMessage);
-                        this.offlineModeText.setVisible(false);
-                    }
-                } else {
-                    // その他のエラーは接続できている可能性があるとみなす
-                    console.log('Server might be reachable (got error but not network error)');
-                    this.offlineModeText.setVisible(false);
-                }
+                // エラーが発生した場合は疎通できないとみなす（オフラインモード表示）
+                this.offlineModeText.setVisible(true);
             }
         } catch (error) {
             console.warn('Server connection check failed:', error);
@@ -373,6 +346,9 @@ export class EntryScene extends Phaser.Scene {
             localStorage.setItem('isOfflineMode', 'true');
             
             console.log('Offline mode: User ID saved:', userId);
+            
+            // ランキング情報とトロフィー情報のキャッシュをクリア（オフラインモードでも）
+            this.clearUserDataCache();
             
             // 入力フィールドをクリア
             if (this.passwordInput) {
@@ -462,6 +438,12 @@ export class EntryScene extends Phaser.Scene {
                 // オフラインモードフラグをクリア
                 localStorage.removeItem('isOfflineMode');
                 
+                // ランキング情報とトロフィー情報のキャッシュをクリア
+                this.clearUserDataCache();
+                
+                // サーバーから最新の情報をロード
+                await this.loadUserDataFromServer(response.data.user?.userId, response.data.token);
+                
                 // 入力フィールドをクリア
                 if (this.passwordInput) {
                     this.passwordInput.value = '';
@@ -497,6 +479,101 @@ export class EntryScene extends Phaser.Scene {
             } else {
                 this.showError('ユーザーIDが使用されている、もしくはパスワードを間違えています');
             }
+        }
+    }
+    
+    /**
+     * ユーザーデータのキャッシュをクリア（ランキング情報とトロフィー情報）
+     */
+    clearUserDataCache() {
+        console.log('Clearing user data cache...');
+        
+        // ランキング情報をクリア
+        localStorage.removeItem('distanceRanking');
+        
+        // ランクマッチランキングをクリア（すべての日付）
+        const keysToRemove = [];
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key && (key.startsWith('rankMatchRanking_') || key.startsWith('personalBest_rankMatch_'))) {
+                keysToRemove.push(key);
+            }
+        }
+        keysToRemove.forEach(key => {
+            localStorage.removeItem(key);
+            console.log('Removed:', key);
+        });
+        
+        // トロフィー情報をクリア
+        localStorage.removeItem('unlockedTrophies');
+        localStorage.removeItem('collectedShibou');
+        localStorage.removeItem('playCount');
+        
+        // 自己ベストをクリア（通常モード）
+        localStorage.removeItem('personalBest_normal');
+        // 後方互換性のため、古いキーもクリア
+        localStorage.removeItem('personalBest');
+        
+        console.log('User data cache cleared');
+    }
+    
+    /**
+     * サーバーからユーザーデータをロード（トロフィー情報）
+     * @param {string} userId - ユーザーID
+     * @param {string} token - 認証トークン
+     */
+    async loadUserDataFromServer(userId, token) {
+        if (!this.apiClient || !token) {
+            console.warn('API client or token not available, skipping server data load');
+            return;
+        }
+        
+        try {
+            console.log('Loading user data from server...');
+            
+            // トロフィー情報をサーバーから取得
+            const trophyResponse = await this.apiClient.getTrophies(token);
+            if (trophyResponse && trophyResponse.success && trophyResponse.data) {
+                const trophyData = trophyResponse.data;
+                
+                // ローカルストレージに保存
+                if (trophyData.unlockedTrophies) {
+                    localStorage.setItem('unlockedTrophies', JSON.stringify(trophyData.unlockedTrophies));
+                }
+                if (trophyData.collectedShibou) {
+                    localStorage.setItem('collectedShibou', JSON.stringify(trophyData.collectedShibou));
+                }
+                if (trophyData.playCount !== undefined) {
+                    localStorage.setItem('playCount', trophyData.playCount.toString());
+                }
+                
+                // 自己ベスト情報をローカルストレージに上書き
+                if (trophyData.personalBest_normal !== undefined) {
+                    localStorage.setItem('personalBest_normal', trophyData.personalBest_normal.toString());
+                    console.log(`Loaded personalBest_normal from server: ${trophyData.personalBest_normal}`);
+                } else {
+                    // サーバーに値がない場合は0を設定（初回プレイ用）
+                    localStorage.setItem('personalBest_normal', '0');
+                    console.log('No personalBest_normal on server, set to 0');
+                }
+                if (trophyData.personalBest_rankMatch && typeof trophyData.personalBest_rankMatch === 'object') {
+                    // ランクマッチの自己ベストを日付ごとに保存
+                    Object.keys(trophyData.personalBest_rankMatch).forEach(dateString => {
+                        const key = `personalBest_rankMatch_${dateString}`;
+                        localStorage.setItem(key, trophyData.personalBest_rankMatch[dateString].toString());
+                        console.log(`Loaded ${key} from server: ${trophyData.personalBest_rankMatch[dateString]}`);
+                    });
+                }
+                
+                console.log('Trophy data and personal best loaded from server');
+            }
+            
+            // ランキング情報はゲームプレイ時に必要に応じてロードされるため、ここではロードしない
+            
+            console.log('User data loaded from server');
+        } catch (error) {
+            console.error('Error loading user data from server:', error);
+            // エラーが発生してもゲームは続行できるようにする
         }
     }
     

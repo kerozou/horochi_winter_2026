@@ -1780,6 +1780,7 @@ export class GameScene extends Phaser.Scene {
             });
             
             // 着陸時にリザルト表示を開始（アイリスアウトは裏で継続）
+            // 注意: isPersonalBest()の判定はshowResultScreen()内で行う（自己ベストを更新する前）
             this.showResultScreen(finalDistance, finalSpeedKmh).catch(error => {
                 console.error('Error showing result screen:', error);
             });
@@ -1828,8 +1829,8 @@ export class GameScene extends Phaser.Scene {
      * リザルト画面を表示
      */
     async showResultScreen(finalDistance, finalSpeedKmh) {
-        // ゲーム終了時にトロフィーデータをまとめて更新
-        await this.syncTrophyDataToAPI().catch(error => {
+        // ゲーム終了時にトロフィーデータをまとめて更新（非同期で実行、リザルト表示をブロックしない）
+        this.syncTrophyDataToAPI().catch(error => {
             console.error('Error syncing trophy data to API:', error);
         });
         
@@ -1848,8 +1849,21 @@ export class GameScene extends Phaser.Scene {
             this.separationResultText.setVisible(false);
         }
         
-        // 自己ベストを更新したかどうかをチェック
+        // 自己ベストを更新したかどうかをチェック（自己ベストを更新する前に判定）
+        console.log(`Checking personal best: finalDistance=${finalDistance}, mode=${this.isRankMatch ? `rankMatch_${this.rankMatchDate}` : 'normal'}`);
         const isPersonalBest = this.isPersonalBest(finalDistance);
+        console.log(`isPersonalBest result: ${isPersonalBest}`);
+        
+        // 自己ベストを更新（判定後に更新）
+        if (isPersonalBest) {
+            const currentPersonalBest = this.getPersonalBest();
+            this.setPersonalBest(finalDistance);
+            console.log(`Personal best updated in showResultScreen: ${currentPersonalBest} -> ${finalDistance}`);
+            // API経由で自己ベストを保存
+            this.savePersonalBestToAPI(finalDistance).catch(error => {
+                console.error('Error saving personal best to API:', error);
+            });
+        }
         
         // セピア調エフェクトを適用（画面全体を覆う半透明のセピア色オーバーレイ）
         const screenHeight = this.cameras.main.height;
@@ -2250,47 +2264,123 @@ export class GameScene extends Phaser.Scene {
      */
     
     /**
+     * 自己ベストのキーを取得（モードに応じて）
+     * @returns {string} - localStorageのキー
+     */
+    getPersonalBestKey() {
+        if (this.isRankMatch && this.rankMatchDate) {
+            // ランクマッチモード: 日付ごとに別々のキー
+            return `personalBest_rankMatch_${this.rankMatchDate}`;
+        } else {
+            // 通常モード（限界スコアモード）
+            return 'personalBest_normal';
+        }
+    }
+    
+    /**
+     * 自己ベストを取得（モードに応じて）
+     * @returns {number} - 自己ベストの距離
+     */
+    getPersonalBest() {
+        const key = this.getPersonalBestKey();
+        // 後方互換性: 通常モードの場合、古いキーも確認
+        if (!this.isRankMatch) {
+            const oldKey = 'personalBest';
+            const oldValue = localStorage.getItem(oldKey);
+            if (oldValue) {
+                // 古いキーから新しいキーに移行
+                localStorage.setItem(key, oldValue);
+                localStorage.removeItem(oldKey);
+                const value = parseInt(oldValue, 10);
+                console.log(`getPersonalBest: migrated from ${oldKey} to ${key}, value=${value}`);
+                return value;
+            }
+        }
+        const value = parseInt(localStorage.getItem(key) || '0', 10);
+        console.log(`getPersonalBest: key=${key}, value=${value}, exists=${localStorage.getItem(key) !== null}`);
+        return value;
+    }
+    
+    /**
+     * 自己ベストを保存（モードに応じて）
+     * @param {number} distance - 保存する距離
+     */
+    setPersonalBest(distance) {
+        const key = this.getPersonalBestKey();
+        localStorage.setItem(key, distance.toString());
+    }
+    
+    /**
+     * 自己ベストをAPI経由で保存
+     * @param {number} distance - 保存する距離
+     */
+    async savePersonalBestToAPI(distance) {
+        try {
+            const apiClient = getApiClient();
+            const authToken = localStorage.getItem('authToken');
+            
+            if (!authToken) {
+                // トークンがない場合はスキップ
+                return;
+            }
+            
+            // 現在のトロフィーデータを取得
+            const response = await apiClient.getTrophies(authToken);
+            const trophyData = response.data || {
+                unlockedTrophies: [],
+                collectedShibou: [],
+                playCount: 0,
+                rankCounts: {},
+                personalBest_normal: 0,
+                personalBest_rankMatch: {}
+            };
+            
+            // 自己ベストを更新
+            if (this.isRankMatch && this.rankMatchDate) {
+                // ランクマッチモード: 日付ごとに保存
+                if (!trophyData.personalBest_rankMatch) {
+                    trophyData.personalBest_rankMatch = {};
+                }
+                const currentBest = trophyData.personalBest_rankMatch[this.rankMatchDate] || 0;
+                if (distance > currentBest) {
+                    trophyData.personalBest_rankMatch[this.rankMatchDate] = distance;
+                }
+            } else {
+                // 通常モード（限界スコアモード）
+                trophyData.personalBest_normal = Math.max(trophyData.personalBest_normal || 0, distance);
+            }
+            
+            // APIに更新
+            await apiClient.updateTrophies(authToken, trophyData);
+            
+            console.log('Personal best saved to API:', distance, this.isRankMatch ? `(RankMatch: ${this.rankMatchDate})` : '(Normal)');
+        } catch (error) {
+            console.error('Error saving personal best to API:', error);
+            throw error;
+        }
+    }
+    
+    /**
      * 自己ベストを更新したかどうかを判定
      * @param {number} distance - 現在の記録
      * @returns {boolean} - 自己ベストを更新した場合true
      */
     isPersonalBest(distance) {
         try {
-            if (this.isRankMatch && this.rankMatchDate) {
-                // ランクマッチモード: その日のランキングから最高記録を取得
-                const rankingKey = `rankMatchRanking_${this.rankMatchDate}`;
-                const existingRanking = JSON.parse(localStorage.getItem(rankingKey) || '[]');
-                
-                if (existingRanking.length === 0) {
-                    // ランキングが空の場合は自己ベスト更新とみなす
-                    return true;
-                }
-                
-                // 既存の最高記録を取得
-                const maxDistance = Math.max(...existingRanking.map(r => r.distance));
-                
-                // 現在の記録が最高記録を超えているか、または同じ場合は更新とみなす
-                return distance >= maxDistance;
-            } else {
-                // 通常モード: 通常のランキングから最高記録を取得
-                const rankingKey = 'distanceRanking';
-                const existingRanking = JSON.parse(localStorage.getItem(rankingKey) || '[]');
-                
-                if (existingRanking.length === 0) {
-                    // ランキングが空の場合は自己ベスト更新とみなす
-                    return true;
-                }
-                
-                // 既存の最高記録を取得
-                const maxDistance = Math.max(...existingRanking.map(r => r.distance));
-                
-                // 現在の記録が最高記録を超えているか、または同じ場合は更新とみなす
-                return distance >= maxDistance;
-            }
+            // モードに応じた自己ベストを取得（localStorageから）
+            const savedPersonalBest = this.getPersonalBest();
+            
+            // 現在の記録が過去の自己ベストよりも大きい場合のみ更新とみなす（同じ距離は更新とみなさない）
+            const isNewBest = distance > savedPersonalBest;
+            
+            console.log(`Personal best check: distance=${distance}, savedBest=${savedPersonalBest}, isNewBest=${isNewBest}, mode=${this.isRankMatch ? `rankMatch_${this.rankMatchDate}` : 'normal'}`);
+            
+            return isNewBest;
         } catch (error) {
             console.error('Error checking personal best:', error);
-            // エラーが発生した場合は安全のためtrueを返す（ランキング登録を表示）
-            return true;
+            // エラーが発生した場合は、モードに応じたpersonalBestと比較
+            const savedPersonalBest = this.getPersonalBest();
+            return distance > savedPersonalBest;
         }
     }
     
@@ -2960,10 +3050,33 @@ export class GameScene extends Phaser.Scene {
             const localCollectedShibou = JSON.parse(localStorage.getItem('collectedShibou') || '[]');
             const localPlayCount = parseInt(localStorage.getItem('playCount') || '0', 10);
             
+            // 自己ベスト情報を取得
+            const localPersonalBest_normal = parseInt(localStorage.getItem('personalBest_normal') || '0', 10);
+            const localPersonalBest_rankMatch = {};
+            // ランクマッチの自己ベストをすべて取得
+            for (let i = 0; i < localStorage.length; i++) {
+                const key = localStorage.key(i);
+                if (key && key.startsWith('personalBest_rankMatch_')) {
+                    const dateString = key.replace('personalBest_rankMatch_', '');
+                    localPersonalBest_rankMatch[dateString] = parseInt(localStorage.getItem(key) || '0', 10);
+                }
+            }
+            
             // マージ（ローカルの方が新しい場合は上書き）
             trophyData.unlockedTrophies = [...new Set([...trophyData.unlockedTrophies, ...localUnlockedTrophies])];
             trophyData.collectedShibou = [...new Set([...trophyData.collectedShibou, ...localCollectedShibou])];
             trophyData.playCount = Math.max(trophyData.playCount || 0, localPlayCount);
+            
+            // 自己ベストをマージ（大きい方を採用）
+            trophyData.personalBest_normal = Math.max(trophyData.personalBest_normal || 0, localPersonalBest_normal);
+            if (!trophyData.personalBest_rankMatch) {
+                trophyData.personalBest_rankMatch = {};
+            }
+            Object.keys(localPersonalBest_rankMatch).forEach(dateString => {
+                const localBest = localPersonalBest_rankMatch[dateString];
+                const serverBest = trophyData.personalBest_rankMatch[dateString] || 0;
+                trophyData.personalBest_rankMatch[dateString] = Math.max(localBest, serverBest);
+            });
             
             // rankCountsは既にAPIに保存されているので、そのまま使用
             
@@ -2974,6 +3087,13 @@ export class GameScene extends Phaser.Scene {
             localStorage.setItem('unlockedTrophies', JSON.stringify(trophyData.unlockedTrophies));
             localStorage.setItem('collectedShibou', JSON.stringify(trophyData.collectedShibou));
             localStorage.setItem('playCount', trophyData.playCount.toString());
+            
+            // 自己ベストもローカルストレージに保存
+            localStorage.setItem('personalBest_normal', trophyData.personalBest_normal.toString());
+            Object.keys(trophyData.personalBest_rankMatch).forEach(dateString => {
+                const key = `personalBest_rankMatch_${dateString}`;
+                localStorage.setItem(key, trophyData.personalBest_rankMatch[dateString].toString());
+            });
             
             console.log('Trophy data synced to API');
         } catch (error) {
@@ -3216,12 +3336,14 @@ export class GameScene extends Phaser.Scene {
         console.log('Play count:', playCount);
         
         // パーソナルベストを取得（飛距離トロフィーのチェックに使用）
-        const personalBest = Math.max(
-            parseInt(localStorage.getItem('personalBest') || '0', 10),
-            finalDistance
-        );
-        if (finalDistance > parseInt(localStorage.getItem('personalBest') || '0', 10)) {
-            localStorage.setItem('personalBest', finalDistance.toString());
+        const currentPersonalBest = this.getPersonalBest();
+        const personalBest = Math.max(currentPersonalBest, finalDistance);
+        if (finalDistance > currentPersonalBest) {
+            this.setPersonalBest(finalDistance);
+            // API経由で自己ベストを保存
+            this.savePersonalBestToAPI(finalDistance).catch(error => {
+                console.error('Error saving personal best to API:', error);
+            });
         }
         
         // トロフィーデータを生成（TrophySceneと同じロジック）

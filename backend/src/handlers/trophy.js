@@ -22,7 +22,9 @@ async function getTrophies(event) {
                 unlockedTrophies: [],
                 collectedShibou: [],
                 playCount: 0,
-                rankCounts: {}
+                rankCounts: {},
+                personalBest_normal: 0,
+                personalBest_rankMatch: {}
             });
         }
 
@@ -45,12 +47,27 @@ async function updateTrophies(event) {
         }
 
         const body = JSON.parse(event.body || '{}');
-        const { unlockedTrophies, collectedShibou, playCount, rankCounts } = body;
+        const { unlockedTrophies, collectedShibou, playCount, rankCounts, personalBest_normal, personalBest_rankMatch } = body;
 
         const db = DatabaseAdapterFactory.create();
         
         // 既存データを取得
         const existingData = await db.getTrophies(userId);
+        
+        // 自己ベストのマージ処理
+        let mergedPersonalBest_rankMatch = existingData?.personalBest_rankMatch || {};
+        if (personalBest_rankMatch !== undefined) {
+            // 日付ごとの自己ベストをマージ（新しい値が大きい場合は更新）
+            if (typeof personalBest_rankMatch === 'object' && personalBest_rankMatch !== null) {
+                Object.keys(personalBest_rankMatch).forEach(dateString => {
+                    const newDistance = personalBest_rankMatch[dateString];
+                    const existingDistance = mergedPersonalBest_rankMatch[dateString] || 0;
+                    if (newDistance > existingDistance) {
+                        mergedPersonalBest_rankMatch[dateString] = newDistance;
+                    }
+                });
+            }
+        }
         
         const trophyData = {
             userId,
@@ -58,6 +75,8 @@ async function updateTrophies(event) {
             collectedShibou: collectedShibou !== undefined ? collectedShibou : (existingData?.collectedShibou || []),
             playCount: playCount !== undefined ? playCount : (existingData?.playCount || 0),
             rankCounts: rankCounts !== undefined ? rankCounts : (existingData?.rankCounts || {}),
+            personalBest_normal: personalBest_normal !== undefined ? Math.max(personalBest_normal, existingData?.personalBest_normal || 0) : (existingData?.personalBest_normal || 0),
+            personalBest_rankMatch: mergedPersonalBest_rankMatch,
             updatedAt: new Date().toISOString()
         };
 

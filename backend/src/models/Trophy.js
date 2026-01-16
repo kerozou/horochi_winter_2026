@@ -8,6 +8,9 @@ class Trophy {
         this.collectedShibou = data.collectedShibou || [];
         this.playCount = data.playCount || 0;
         this.rankCounts = data.rankCounts || {};
+        // 自己ベスト情報
+        this.personalBest_normal = data.personalBest_normal || 0;
+        this.personalBest_rankMatch = data.personalBest_rankMatch || {}; // { dateString: distance, ... }
         this.updatedAt = data.updatedAt;
     }
 
@@ -21,6 +24,8 @@ class Trophy {
             collectedShibou: this.collectedShibou,
             playCount: this.playCount,
             rankCounts: this.rankCounts,
+            personalBest_normal: this.personalBest_normal,
+            personalBest_rankMatch: this.personalBest_rankMatch,
             updatedAt: this.updatedAt || new Date().toISOString()
         };
     }
