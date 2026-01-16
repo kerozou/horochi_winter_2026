@@ -82,8 +82,11 @@ async function updateRanking(event) {
     }
 }
 
-module.exports = {
-    getRanking,
-    updateRanking
+module.exports.getRanking = async (event) => {
+    return await getRanking(event);
+};
+
+module.exports.updateRanking = async (event) => {
+    return await updateRanking(event);
 };
 

@@ -10,5 +10,7 @@ async function health(event) {
     });
 }
 
-module.exports = { health };
+module.exports.health = async (event) => {
+    return await health(event);
+};
 
