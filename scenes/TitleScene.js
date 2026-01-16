@@ -307,7 +307,7 @@ export class TitleScene extends Phaser.Scene {
         const rankMatchButton = this.createButton(
             rightHalfCenterX,
             centerY - 80,
-            '⚔️ ランクマッチ',
+            '⚔️ ランクマッチ(β)',
             () => {
                 console.log('Transitioning to Rank Match Scene...');
                 this.transitionToRankMatchScene();
@@ -1386,9 +1386,15 @@ export class TitleScene extends Phaser.Scene {
             this.videoElement.style.opacity = '0';
         }
         
-        // フェードアウト完了後にシーン遷移
+        // フェードアウト完了後に0.5秒の黒画面一時停止
         this.cameras.main.once('camerafadeoutcomplete', () => {
-            this.scene.start('RankMatchScene');
+            // カメラの背景を黒に設定
+            this.cameras.main.setBackgroundColor('#000000');
+            
+            // 0.5秒待機してからシーン遷移
+            this.time.delayedCall(500, () => {
+                this.scene.start('RankMatchScene');
+            });
         });
     }
     

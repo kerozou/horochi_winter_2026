@@ -2124,19 +2124,11 @@ export class GameScene extends Phaser.Scene {
         speedText.setScrollFactor(0);
         speedText.setDepth(600);
         
-        if (isPersonalBest) {
-            // 自己ベストを更新した場合のみ名前入力UIを表示
-            this.showNameInput(finalDistance);
-            
-            // 「確定して再発射」ボタンを表示（ランクマッチモードでも表示）
-            this.showConfirmAndRetryButton(finalDistance);
-        } else {
-            // // 自己ベストを更新できなかった場合
-            // this.showNoPersonalBestMessage(finalDistance);
-            
-            // 再発射ボタンを表示（記録更新できなかった場合はランクマッチでも表示）
-            this.showRetryButton();
-        }
+        // ランキング登録は毎回表示（飛距離に関係なく）
+        this.showNameInput(finalDistance);
+        
+        // 自己ベスト更新の有無に関わらず、「確定して再発射」ボタンを表示
+        this.showConfirmAndRetryButton(finalDistance);
     }
     
     /**

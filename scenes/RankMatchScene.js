@@ -48,8 +48,8 @@ export class RankMatchScene extends Phaser.Scene {
         const screenHeight = this.cameras.main.height;
         const centerX = screenWidth / 2;
         
-        // 背景
-        this.cameras.main.setBackgroundColor('#2c3e50');
+        // 背景を黒に設定（フェードイン前に黒画面を表示）
+        this.cameras.main.setBackgroundColor('#000000');
         
         // タイトル
         const title = this.add.text(centerX, 40, '⚔️ ランクマッチ', {
@@ -102,6 +102,9 @@ export class RankMatchScene extends Phaser.Scene {
         
         // BGMを再生
         this.playBGM();
+        
+        // 背景色を設定してからフェードイン
+        this.cameras.main.setBackgroundColor('#2c3e50');
         
         // フェードイン効果
         this.cameras.main.fadeIn(500, 0, 0, 0);
