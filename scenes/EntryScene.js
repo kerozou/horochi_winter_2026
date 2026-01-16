@@ -231,6 +231,7 @@ export class EntryScene extends Phaser.Scene {
             
             try {
                 // ヘルスチェックエンドポイントにリクエストを送る
+                console.log('Checking server connection to:', `${this.apiClient.baseUrl}/health`);
                 const response = await fetch(`${this.apiClient.baseUrl}/health`, {
                     method: 'GET',
                     signal: controller.signal,
@@ -248,6 +249,12 @@ export class EntryScene extends Phaser.Scene {
                 this.offlineModeText.setVisible(false);
             } catch (error) {
                 clearTimeout(timeoutId);
+                
+                console.log('Server connection check error:', {
+                    name: error.name,
+                    message: error.message,
+                    type: typeof error
+                });
                 
                 // タイムアウトエラーの場合
                 if (error.name === 'AbortError') {
@@ -271,7 +278,8 @@ export class EntryScene extends Phaser.Scene {
                         this.offlineModeText.setVisible(true);
                     } else {
                         // その他のエラー（CORS、502など）はAPI Gatewayに接続できているとみなす
-                        console.log('API Gateway is reachable (got error but not network connection error)');
+                        // Failed to fetchはCORSエラーの可能性が高いが、API Gatewayには接続できている
+                        console.log('API Gateway is reachable (got error but not network connection error). Error:', errorMessage);
                         this.offlineModeText.setVisible(false);
                     }
                 } else {

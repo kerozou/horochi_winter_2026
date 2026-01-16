@@ -80,7 +80,8 @@ export class BackendStack extends cdk.Stack {
         // AWS_REGIONはLambdaランタイムによって自動的に設定されるため、手動で設定しない
       },
       code: lambda.Code.fromAsset(path.join(__dirname, '../../../backend'), {
-        exclude: ['*.md', '.git', '.gitignore', 'test', '*.test.js', '*.test.ts', 'package-lock.json'],
+        exclude: ['*.md', '.git', '.gitignore', 'test', '*.test.js', '*.test.ts'],
+        // node_modulesは含める（package-lock.jsonも含める）
       }),
     };
 
