@@ -149,6 +149,12 @@ export class GameScene extends Phaser.Scene {
         if (!this.textures.exists('binba_back')) {
             this.load.image('binba_back', 'resources/binba_back.png');
         }
+        if (!this.textures.exists('bg_black')) {
+            this.load.image('bg_black', 'resources/bg_black.png');
+        }
+        if (!this.textures.exists('kirakira')) {
+            this.load.image('kirakira', 'resources/kirakira.png');
+        }
     }
     
     create() {
@@ -177,6 +183,47 @@ export class GameScene extends Phaser.Scene {
                     console.log('Smoke spritesheet loaded successfully');
                 });
                 this.load.start();
+            }
+            
+            // kirakira.pngをスプライトシートとして定義（縦26×横5、131フレーム）
+            if (this.textures.exists('kirakira') && !this.textures.exists('kirakira_sheet')) {
+                const texture = this.textures.get('kirakira');
+                const imageWidth = texture.source[0].width;
+                const imageHeight = texture.source[0].height;
+                const frameWidth = imageWidth / 5; // 横5列
+                const frameHeight = imageHeight / 26; // 縦26行
+                
+                // 一時画像を削除
+                this.textures.remove('kirakira');
+                
+                // スプライトシートとして読み込み
+                this.load.spritesheet('kirakira_sheet', 'resources/kirakira.png', {
+                    frameWidth: frameWidth,
+                    frameHeight: frameHeight
+                });
+                
+                // 読み込み完了を待つ
+                this.load.once('complete', () => {
+                    console.log('Kirakira spritesheet loaded successfully');
+                    // アニメーションを定義（130フレーム）
+                    if (!this.anims.exists('kirakira_anim')) {
+                        this.anims.create({
+                            key: 'kirakira_anim',
+                            frames: this.anims.generateFrameNumbers('kirakira_sheet', { start: 0, end: 128 }), // 0-130で131フレーム
+                            frameRate: 32, // フレームレート（必要に応じて調整）
+                            repeat: -1 // 無限ループ
+                        });
+                    }
+                });
+                this.load.start();
+            } else if (this.textures.exists('kirakira_sheet') && !this.anims.exists('kirakira_anim')) {
+                // スプライトシートが既に存在する場合はアニメーションのみ定義
+                this.anims.create({
+                    key: 'kirakira_anim',
+                    frames: this.anims.generateFrameNumbers('kirakira_sheet', { start: 0, end: 128 }), // 0-130で131フレーム
+                    frameRate: 32, // フレームレート（必要に応じて調整）
+                    repeat: -1 // 無限ループ
+                });
             }
             
             // プロパティを初期化
@@ -379,6 +426,48 @@ export class GameScene extends Phaser.Scene {
         
         // 状態テキストをクラス変数として保存
         this.statusText = null;
+        
+        // 飛行中用の再発射ボタン（右上）
+        const screenWidth = this.cameras.main.width;
+        const retryButtonX = screenWidth + 850;
+        const retryButtonY = -600;
+        
+        this.inFlightRetryButton = this.add.container(retryButtonX, retryButtonY);
+        const retryBg = this.add.rectangle(0, 0, 300, 70, 0x4ecdc4);
+        retryBg.setStrokeStyle(2, 0xffffff);
+        const retryText = this.add.text(0, 0, '再発射', {
+            fontSize: '40px',
+            fill: '#ffffff',
+            fontStyle: 'bold'
+        });
+        retryText.setOrigin(0.5);
+        this.inFlightRetryButton.add([retryBg, retryText]);
+        this.inFlightRetryButton.setSize(300, 70);
+        this.inFlightRetryButton.setInteractive({ useHandCursor: true });
+        this.inFlightRetryButton.setScrollFactor(0); // スクリーン座標に固定
+        this.inFlightRetryButton.setDepth(100);
+        this.inFlightRetryButton.setVisible(false); // 初期状態では非表示
+        
+        // 再発射ボタンのホバー効果
+        this.inFlightRetryButton.on('pointerover', () => {
+            retryBg.setFillStyle(0x3ab5dd);
+        });
+        this.inFlightRetryButton.on('pointerout', () => {
+            retryBg.setFillStyle(0x4ecdc4);
+        });
+        
+        // 再発射ボタンのクリックイベント
+        this.inFlightRetryButton.on('pointerdown', () => {
+            // deci.mp3を音量50%で再生
+            if (this.cache.audio.exists('deci')) {
+                this.sound.play('deci', {
+                    volume: 0.5
+                });
+            }
+            
+            // アイリスアウトトランジションを開始
+            this.startRetryIrisOutTransition();
+        });
         
             //     // 設計情報を表示（エディタから来た場合）
             // if (this.rocketDesign) {
@@ -986,6 +1075,11 @@ export class GameScene extends Phaser.Scene {
             this.statusText.setText('発射中...');
             this.statusText.setStyle({ fill: '#ffff00' });
         }
+        
+        // 飛行中用の再発射ボタンを表示
+        if (this.inFlightRetryButton) {
+            this.inFlightRetryButton.setVisible(true);
+        }
     }
     
     /**
@@ -1045,6 +1139,11 @@ export class GameScene extends Phaser.Scene {
         }
         if (this.speedometerNeedle) {
             this.speedometerNeedle.setVisible(false);
+        }
+        
+        // 飛行中用の再発射ボタンを非表示
+        if (this.inFlightRetryButton) {
+            this.inFlightRetryButton.setVisible(false);
         }
 
         // 状態テキストを更新
@@ -1612,6 +1711,11 @@ export class GameScene extends Phaser.Scene {
         if (this.distanceText) {
             this.distanceText.setVisible(false);
         }
+        
+        // 飛行中用の再発射ボタンを非表示
+        if (this.inFlightRetryButton) {
+            this.inFlightRetryButton.setVisible(false);
+        }
         if (this.speedometerInfo && this.speedometerInfo.label) {
             this.speedometerInfo.label.setVisible(false);
         }
@@ -1700,6 +1804,47 @@ export class GameScene extends Phaser.Scene {
         // 自己ベストを更新したかどうかをチェック
         const isPersonalBest = this.isPersonalBest(finalDistance);
         
+        // セピア調エフェクトを適用（画面全体を覆う半透明のセピア色オーバーレイ）
+        const screenHeight = this.cameras.main.height;
+        
+        // kirakira.pngアニメーションを再生
+        if (this.textures.exists('kirakira_sheet') && this.anims.exists('kirakira_anim')) {
+            const kirakiraSprite = this.add.sprite(screenCenterX, screenCenterY, 'kirakira_sheet');
+            kirakiraSprite.setScrollFactor(0);
+            kirakiraSprite.setDepth(50); // セピアオーバーレイより下
+            kirakiraSprite.setAlpha(0.3); // 透明度30%
+            // 画面全体に表示するようにスケール調整
+            const texture = this.textures.get('kirakira_sheet');
+            const frameHeight = texture.source[0].height / 26;
+            const scale = screenHeight / frameHeight + 5;
+            kirakiraSprite.setScale(scale);
+            kirakiraSprite.play('kirakira_anim');
+        }
+        const sepiaOverlay = this.add.rectangle(
+            screenCenterX,
+            screenCenterY,
+            screenWidth,
+            screenHeight,
+            0x704214, // セピア色（茶色がかった色）
+            0.15 // 透明度（0.15 = 15%の不透明度）
+        );
+        sepiaOverlay.setScrollFactor(0);
+        sepiaOverlay.setDepth(100); // bg_x.png（深度-100）より上、リザルトテキスト（深度600）より下
+        sepiaOverlay.setScale(4);
+        
+        // bg_black.pngを画面中央に表示
+        if (this.textures.exists('bg_black')) {
+            const bgBlackImage = this.add.image(screenCenterX, screenCenterY + 35, 'bg_black');
+            bgBlackImage.setScrollFactor(0);
+            bgBlackImage.setDepth(1000); // 一番上のレイヤー
+            bgBlackImage.setOrigin(0.5);
+            
+            // 画面の高さに合わせてスケール調整
+            const imageHeight = bgBlackImage.height;
+            const scaleY = screenHeight / imageHeight + 2.8;
+            bgBlackImage.setScale(scaleY);
+        }
+        
         // 新記録ならhoronbia.jpg、そうでなければiei.pngを表示（現在は無効化）
         // if (isPersonalBest && this.textures.exists('horonbia')) {
         //     const horonbiaImage = this.add.image(screenWidth - 1400, 950, 'horonbia');
@@ -1722,7 +1867,6 @@ export class GameScene extends Phaser.Scene {
         }
         
         // 右下にeru_back, hirameki_back, binba_backを並べて表示
-        const screenHeight = this.cameras.main.height;
         const backImageY = screenHeight - 100;
         const backImageSpacing = 150;
         
@@ -1748,7 +1892,7 @@ export class GameScene extends Phaser.Scene {
         // 「着陸成功！」テキスト（画面中央上部）
         const gameOverText = this.add.text(
             screenCenterX + 1000,
-            screenCenterY - 330 - 500,
+            screenCenterY - 330 - 380,
             '着陸成功！',
             {
                 fontSize: '72px',
@@ -1764,8 +1908,8 @@ export class GameScene extends Phaser.Scene {
         
         // 飛距離を大きく表示（画面中央）
         const distanceResultText = this.add.text(
-            screenCenterX,
-            screenCenterY - 180,
+            screenCenterX + 1000,
+            screenCenterY - 180 - 250,
             `${finalDistance} m`,
             {
                 fontSize: '144px',
@@ -1781,8 +1925,8 @@ export class GameScene extends Phaser.Scene {
         
         // 着地速度（飛距離の下）
         const speedText = this.add.text(
-            screenCenterX,
-            screenCenterY - 60,
+            screenCenterX + 1000,
+            screenCenterY - 60 - 250,
             `着地速度: ${finalSpeedKmh} km/h`,
             {
                 fontSize: '36px',
@@ -1989,7 +2133,7 @@ export class GameScene extends Phaser.Scene {
         const screenWidth = this.cameras.main.width +900;
         const screenHeight = this.cameras.main.height;
         const screenCenterX = screenWidth / 2;
-        const screenCenterY = screenHeight / 2;
+        const screenCenterY = screenHeight / 2 + 600;
         
         // メッセージパネル
         const messagePanel = this.add.container(screenCenterX + 500, screenCenterY - 400);
@@ -2059,7 +2203,7 @@ export class GameScene extends Phaser.Scene {
         const panelHeight = 900;
         
         // タイトル（画面中央下部）
-        const titleText = this.add.text(screenCenterX, screenCenterY + 90, 'ランキングに登録', {
+        const titleText = this.add.text(screenCenterX + 1000, screenCenterY + 90 - 250, 'ランキングに登録', {
             fontSize: '48px',
             fill: '#ffffff',
             fontStyle: 'bold'
@@ -2069,7 +2213,7 @@ export class GameScene extends Phaser.Scene {
         titleText.setDepth(600);
         
         // 説明文（タイトルの下）
-        const instructionText = this.add.text(screenCenterX, screenCenterY + 150, 'アルファベット5文字で名前を入力', {
+        const instructionText = this.add.text(screenCenterX + 1000, screenCenterY + 150 - 250, 'アルファベット5文字で名前を入力', {
             fontSize: '35px',
             fill: '#ffffff'
         });
@@ -2078,7 +2222,7 @@ export class GameScene extends Phaser.Scene {
         instructionText.setDepth(600);
         
         // 注意書き（入力フィールドの下）
-        const warningText = this.add.text(screenCenterX, screenCenterY + 370, '※確定して再発射を押さないとランキングには反映されません', {
+        const warningText = this.add.text(screenCenterX + 1000, screenCenterY + 370 - 200, '※確定して再発射を押さないとランキングには反映されません', {
             fontSize: '35px',
             fill: '#ffff00'
         });
@@ -2090,23 +2234,25 @@ export class GameScene extends Phaser.Scene {
         const gameContainer = document.getElementById('game-container');
         if (gameContainer) {
             const canvasRect = this.game.canvas.getBoundingClientRect();
-            const containerRect = gameContainer.getBoundingClientRect();
             
             const scaleX = this.game.scale.displaySize.width / this.game.scale.gameSize.width;
             const scaleY = this.game.scale.displaySize.height / this.game.scale.gameSize.height;
-            const canvasOffsetX = canvasRect.left - containerRect.left;
-            const canvasOffsetY = canvasRect.top - containerRect.top;
             
-            // 入力フィールドの位置をスクリーン座標に合わせる（画面中央、説明文の下）
+            // 入力フィールドの位置をスクリーン座標（相対座標）で計算（画面中央、説明文の下）
             const inputWidth = 150;
             const inputHeight = 35;
-            const inputX = canvasOffsetX + (screenCenterX - inputWidth / 2) * scaleX;
-            const inputY = canvasOffsetY + (screenCenterY + 135) * scaleY;
+            // 説明文のY座標: screenCenterY + 150 - 250 = screenCenterY - 100
+            // 説明文の下に配置（説明文の高さの半分 + 間隔40px）
+            const instructionY = screenCenterY + 150 - 250; // 説明文のY座標
+            const inputYOffset = instructionY + 17.5 + 40; // 説明文の下に配置
+            // 画面の固定位置（ビューポート座標）で計算
+            const inputX = canvasRect.left + (screenCenterX + 330 - inputWidth / 2) * scaleX;
+            const inputY = canvasRect.top + inputYOffset * scaleY + 37;
             
             const nameInput = document.createElement('input');
             nameInput.type = 'text';
             nameInput.maxLength = 5;
-            nameInput.style.position = 'absolute';
+            nameInput.style.position = 'fixed'; // fixedに変更してスクロールに影響されないように
             nameInput.style.left = inputX + 'px';
             nameInput.style.top = inputY + 'px';
             nameInput.style.width = (inputWidth * scaleX) + 'px';
@@ -2195,7 +2341,7 @@ export class GameScene extends Phaser.Scene {
         const buttonY = screenCenterY + 170; // 画面中央下部
         
         // 再発射ボタン（スクリーン座標で固定）
-        const retryButton = this.add.container(screenCenterX, buttonY);
+        const retryButton = this.add.container(screenCenterX + 1000, buttonY + 150);
         const retryBg = this.add.rectangle(0, 0, 400, 80, 0x4ecdc4);
         retryBg.setStrokeStyle(2, 0xffffff);
         const retryText = this.add.text(0, 0, '再発射', {
@@ -2251,7 +2397,7 @@ export class GameScene extends Phaser.Scene {
         const screenCenterY = screenHeight / 2;
         const buttonY = screenCenterY + 220;
         
-        const confirmRetryButton = this.add.container(screenCenterX, buttonY);
+        const confirmRetryButton = this.add.container(screenCenterX + 1000, buttonY + 100);
         const confirmRetryBg = this.add.rectangle(0, 0, 500, 80, 0x27ae60);
         confirmRetryBg.setStrokeStyle(2, 0xffffff);
         const confirmRetryText = this.add.text(0, 0, '確定して再発射', {
