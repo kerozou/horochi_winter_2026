@@ -74,16 +74,10 @@ export class BackendStack extends cdk.Stack {
         DYNAMODB_TABLE_RANKINGS: rankingsTable.tableName,
         JWT_SECRET: jwtSecret,
         DB_ADAPTER: 'dynamodb',
-        AWS_REGION: this.region,
+        // AWS_REGIONはLambdaランタイムによって自動的に設定されるため、手動で設定しない
       },
       code: lambda.Code.fromAsset(path.join(__dirname, '../../../backend'), {
-        bundling: {
-          image: lambda.Runtime.NODEJS_18_X.bundlingImage,
-          command: [
-            'bash', '-c',
-            'npm ci --production && cp -r src/* . && cp -r node_modules .',
-          ],
-        },
+        exclude: ['*.md', '.git', '.gitignore', 'test', '*.test.js', '*.test.ts'],
       }),
     };
 
