@@ -176,68 +176,94 @@ export class BackendStack extends cdk.Stack {
 
     // 認証エンドポイント
     const authResource = api.root.addResource('auth');
+    
+    // ログインエンドポイント
     const loginResource = authResource.addResource('login');
     const loginIntegration = new apigateway.LambdaIntegration(loginFunction, {
       proxy: true,
     });
-    loginResource.addMethod('POST', loginIntegration);
+    loginResource.addMethod('POST', loginIntegration, {
+      authorizationType: apigateway.AuthorizationType.NONE,
+    });
     
+    // 登録エンドポイント
     const registerResource = authResource.addResource('register');
     const registerIntegration = new apigateway.LambdaIntegration(registerFunction, {
       proxy: true,
     });
-    registerResource.addMethod('POST', registerIntegration);
+    registerResource.addMethod('POST', registerIntegration, {
+      authorizationType: apigateway.AuthorizationType.NONE,
+    });
     
+    // ユーザー情報取得エンドポイント
     const userResource = authResource.addResource('user');
     const getUserIntegration = new apigateway.LambdaIntegration(getUserFunction, {
       proxy: true,
     });
-    userResource.addMethod('GET', getUserIntegration);
+    userResource.addMethod('GET', getUserIntegration, {
+      authorizationType: apigateway.AuthorizationType.NONE,
+    });
 
     // トロフィーエンドポイント
     const trophiesResource = api.root.addResource('trophies');
     const getTrophiesIntegration = new apigateway.LambdaIntegration(getTrophiesFunction, {
       proxy: true,
     });
-    trophiesResource.addMethod('GET', getTrophiesIntegration);
+    trophiesResource.addMethod('GET', getTrophiesIntegration, {
+      authorizationType: apigateway.AuthorizationType.NONE,
+    });
     const updateTrophiesIntegration = new apigateway.LambdaIntegration(updateTrophiesFunction, {
       proxy: true,
     });
-    trophiesResource.addMethod('PUT', updateTrophiesIntegration);
+    trophiesResource.addMethod('PUT', updateTrophiesIntegration, {
+      authorizationType: apigateway.AuthorizationType.NONE,
+    });
 
     // お気に入りエンドポイント
     const favoritesResource = api.root.addResource('favorites');
     const getFavoritesIntegration = new apigateway.LambdaIntegration(getFavoritesFunction, {
       proxy: true,
     });
-    favoritesResource.addMethod('GET', getFavoritesIntegration);
+    favoritesResource.addMethod('GET', getFavoritesIntegration, {
+      authorizationType: apigateway.AuthorizationType.NONE,
+    });
     const saveFavoriteIntegration = new apigateway.LambdaIntegration(saveFavoriteFunction, {
       proxy: true,
     });
-    favoritesResource.addMethod('POST', saveFavoriteIntegration);
+    favoritesResource.addMethod('POST', saveFavoriteIntegration, {
+      authorizationType: apigateway.AuthorizationType.NONE,
+    });
     const favoriteIdResource = favoritesResource.addResource('{id}');
     const deleteFavoriteIntegration = new apigateway.LambdaIntegration(deleteFavoriteFunction, {
       proxy: true,
     });
-    favoriteIdResource.addMethod('DELETE', deleteFavoriteIntegration);
+    favoriteIdResource.addMethod('DELETE', deleteFavoriteIntegration, {
+      authorizationType: apigateway.AuthorizationType.NONE,
+    });
 
     // ランキングエンドポイント
     const rankingsResource = api.root.addResource('rankings');
     const getRankingIntegration = new apigateway.LambdaIntegration(getRankingFunction, {
       proxy: true,
     });
-    rankingsResource.addMethod('GET', getRankingIntegration);
+    rankingsResource.addMethod('GET', getRankingIntegration, {
+      authorizationType: apigateway.AuthorizationType.NONE,
+    });
     const updateRankingIntegration = new apigateway.LambdaIntegration(updateRankingFunction, {
       proxy: true,
     });
-    rankingsResource.addMethod('POST', updateRankingIntegration);
+    rankingsResource.addMethod('POST', updateRankingIntegration, {
+      authorizationType: apigateway.AuthorizationType.NONE,
+    });
 
     // ヘルスチェックエンドポイント
     const healthResource = api.root.addResource('health');
     const healthIntegration = new apigateway.LambdaIntegration(healthFunction, {
       proxy: true,
     });
-    healthResource.addMethod('GET', healthIntegration);
+    healthResource.addMethod('GET', healthIntegration, {
+      authorizationType: apigateway.AuthorizationType.NONE,
+    });
 
     // 出力
     new cdk.CfnOutput(this, 'ApiUrl', {
