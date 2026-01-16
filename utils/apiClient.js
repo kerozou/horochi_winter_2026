@@ -16,7 +16,14 @@ export class ApiClient {
      * APIリクエストを送信
      */
     async request(endpoint, options = {}) {
-        const url = `${this.baseUrl}${endpoint}`;
+        // baseUrlの末尾にスラッシュがある場合は削除
+        const baseUrl = this.baseUrl.endsWith('/') ? this.baseUrl.slice(0, -1) : this.baseUrl;
+        // endpointの先頭にスラッシュがない場合は追加
+        const normalizedEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+        const url = `${baseUrl}${normalizedEndpoint}`;
+        
+        // デバッグ用: リクエストURLをログ出力
+        console.log('API Request URL:', url);
         const defaultOptions = {
             headers: {
                 'Content-Type': 'application/json',
@@ -35,6 +42,11 @@ export class ApiClient {
 
         try {
             const response = await fetch(url, config);
+            
+            // レスポンスの詳細をログ出力
+            console.log('Response status:', response.status);
+            console.log('Response headers:', Object.fromEntries(response.headers.entries()));
+            
             let data;
             
             // レスポンスがJSONかどうかを確認
@@ -43,6 +55,7 @@ export class ApiClient {
                 data = await response.json();
             } else {
                 const text = await response.text();
+                console.error('Non-JSON response:', text);
                 throw new Error(text || `HTTP error! status: ${response.status}`);
             }
             
@@ -56,9 +69,24 @@ export class ApiClient {
             return data;
         } catch (error) {
             console.error('API request error:', error);
+            console.error('Request URL:', url);
+            console.error('Request config:', config);
+            
+            // CORSエラーの場合
+            if (error.message.includes('CORS') || error.message.includes('Access-Control')) {
+                throw new Error('CORSエラーが発生しました。API GatewayのCORS設定を確認してください。');
+            }
+            
             // ネットワークエラーの場合
             if (error.name === 'TypeError' && error.message.includes('fetch')) {
-                throw new Error('ネットワークエラーが発生しました。サーバーに接続できません。');
+                // より詳細なエラーメッセージを提供
+                const errorMessage = error.message || 'Unknown error';
+                console.error('Fetch error details:', {
+                    name: error.name,
+                    message: error.message,
+                    stack: error.stack
+                });
+                throw new Error(`ネットワークエラーが発生しました。サーバーに接続できません。詳細: ${errorMessage}`);
             }
             throw error;
         }

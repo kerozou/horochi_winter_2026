@@ -30,7 +30,7 @@ async function getTrophies(event) {
         return successResponse(trophy.toJSON());
     } catch (error) {
         console.error('Get trophies error:', error);
-        return errorResponse('Internal server error', 500, error);
+        return errorResponse(500, 'Internal server error', error);
     }
 }
 
@@ -67,7 +67,7 @@ async function updateTrophies(event) {
         return successResponse(trophy.toJSON());
     } catch (error) {
         console.error('Update trophies error:', error);
-        return errorResponse('Internal server error', 500, error);
+        return errorResponse(500, 'Internal server error', error);
     }
 }
 

@@ -19,7 +19,7 @@ async function getFavorites(event) {
         return successResponse(favorites.map(fav => new Favorite(fav).toJSON()));
     } catch (error) {
         console.error('Get favorites error:', error);
-        return errorResponse('Internal server error', 500, error);
+        return errorResponse(500, 'Internal server error', error);
     }
 }
 
@@ -37,7 +37,7 @@ async function saveFavorite(event) {
         const { name, design, placedParts } = body;
 
         if (!name || !design) {
-            return errorResponse('Name and design are required', 400);
+            return errorResponse(400, 'Name and design are required');
         }
 
         const db = DatabaseAdapterFactory.create();
@@ -56,7 +56,7 @@ async function saveFavorite(event) {
         return successResponse(favorite.toJSON(), 201);
     } catch (error) {
         console.error('Save favorite error:', error);
-        return errorResponse('Internal server error', 500, error);
+        return errorResponse(500, 'Internal server error', error);
     }
 }
 
@@ -72,7 +72,7 @@ async function deleteFavorite(event) {
 
         const favoriteId = event.pathParameters?.id;
         if (!favoriteId) {
-            return errorResponse('Favorite ID is required', 400);
+            return errorResponse(400, 'Favorite ID is required');
         }
 
         const db = DatabaseAdapterFactory.create();
@@ -85,7 +85,7 @@ async function deleteFavorite(event) {
         return successResponse({ message: 'Favorite deleted successfully' });
     } catch (error) {
         console.error('Delete favorite error:', error);
-        return errorResponse('Internal server error', 500, error);
+        return errorResponse(500, 'Internal server error', error);
     }
 }
 

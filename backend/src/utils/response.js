@@ -17,7 +17,7 @@ function successResponse(data, statusCode = 200) {
     };
 }
 
-function errorResponse(message, statusCode = 400, error = null) {
+function errorResponse(statusCode = 400, message = 'Error', error = null) {
     const response = {
         statusCode,
         headers: {
@@ -29,7 +29,7 @@ function errorResponse(message, statusCode = 400, error = null) {
         body: JSON.stringify({
             success: false,
             message,
-            ...(error && { error: error.message })
+            ...(error && { error: error.message || error })
         })
     };
     
@@ -37,11 +37,11 @@ function errorResponse(message, statusCode = 400, error = null) {
 }
 
 function unauthorizedResponse(message = 'Unauthorized') {
-    return errorResponse(message, 401);
+    return errorResponse(401, message);
 }
 
 function notFoundResponse(message = 'Not found') {
-    return errorResponse(message, 404);
+    return errorResponse(404, message);
 }
 
 module.exports = {

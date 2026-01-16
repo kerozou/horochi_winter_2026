@@ -15,13 +15,13 @@ async function login(event) {
         const { userId, password } = body;
 
         if (!userId || !password) {
-            return errorResponse('User ID and password are required', 400);
+            return errorResponse(400, 'User ID and password are required');
         }
 
         // ユーザーIDを正規化
         const normalizedUserId = normalizeUserId(userId);
         if (!normalizedUserId) {
-            return errorResponse('User ID must be 5 characters of uppercase letters and numbers', 400);
+            return errorResponse(400, 'User ID must be 5 characters of uppercase letters and numbers');
         }
 
         // ユーザーIDでユーザーを取得
@@ -44,7 +44,7 @@ async function login(event) {
         });
     } catch (error) {
         console.error('Login error:', error);
-        return errorResponse('Internal server error', 500, error);
+        return errorResponse(500, 'Internal server error', error);
     }
 }
 
@@ -60,7 +60,7 @@ async function register(event) {
         let { userId, password, email } = body;
 
         if (!password) {
-            return errorResponse('Password is required', 400);
+            return errorResponse(400, 'Password is required');
         }
 
         // ユーザーIDが指定されていない場合は自動生成
@@ -79,14 +79,14 @@ async function register(event) {
             } while (attempts < 10);
             
             if (!normalizedUserId) {
-                return errorResponse('Failed to generate unique user ID. Please try again.', 500);
+                return errorResponse(500, 'Failed to generate unique user ID. Please try again.');
             }
             userId = normalizedUserId;
         } else {
             // ユーザーIDを正規化
             const normalized = normalizeUserId(userId);
             if (!normalized) {
-                return errorResponse('User ID must be 5 characters of uppercase letters and numbers', 400);
+                return errorResponse(400, 'User ID must be 5 characters of uppercase letters and numbers');
             }
             userId = normalized;
         }
@@ -94,7 +94,7 @@ async function register(event) {
         // 既存ユーザーをチェック
         const existingUser = await db.getUser(userId);
         if (existingUser) {
-            return errorResponse('User ID already exists', 409);
+            return errorResponse(409, 'User ID already exists');
         }
 
         const passwordHash = await hashPassword(password);
@@ -118,7 +118,7 @@ async function register(event) {
         }, 201);
     } catch (error) {
         console.error('Register error:', error);
-        return errorResponse('Internal server error', 500, error);
+        return errorResponse(500, 'Internal server error', error);
     }
 }
 
@@ -136,14 +136,14 @@ async function getUser(event) {
         const userData = await db.getUser(userId);
         
         if (!userData) {
-            return errorResponse('User not found', 404);
+            return errorResponse(404, 'User not found');
         }
 
         const user = new User(userData);
         return successResponse(user.toPublicJSON());
     } catch (error) {
         console.error('Get user error:', error);
-        return errorResponse('Internal server error', 500, error);
+        return errorResponse(500, 'Internal server error', error);
     }
 }
 

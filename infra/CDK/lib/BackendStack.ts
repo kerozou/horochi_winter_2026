@@ -66,6 +66,8 @@ export class BackendStack extends cdk.Stack {
     const lambdaCommonProps = {
       runtime: lambda.Runtime.NODEJS_18_X,
       role: lambdaRole,
+      timeout: cdk.Duration.seconds(30), // タイムアウトを30秒に設定
+      memorySize: 256, // メモリサイズを256MBに設定
       environment: {
         STAGE: stage,
         DYNAMODB_TABLE_USERS: usersTable.tableName,
@@ -74,10 +76,11 @@ export class BackendStack extends cdk.Stack {
         DYNAMODB_TABLE_RANKINGS: rankingsTable.tableName,
         JWT_SECRET: jwtSecret,
         DB_ADAPTER: 'dynamodb',
+        NODE_ENV: 'production',
         // AWS_REGIONはLambdaランタイムによって自動的に設定されるため、手動で設定しない
       },
       code: lambda.Code.fromAsset(path.join(__dirname, '../../../backend'), {
-        exclude: ['*.md', '.git', '.gitignore', 'test', '*.test.js', '*.test.ts'],
+        exclude: ['*.md', '.git', '.gitignore', 'test', '*.test.js', '*.test.ts', 'package-lock.json'],
       }),
     };
 
