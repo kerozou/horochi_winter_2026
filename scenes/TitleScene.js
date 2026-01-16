@@ -383,7 +383,7 @@ export class TitleScene extends Phaser.Scene {
         });
         
         // デバッグ用：自己記録クリアボタン（フラグで表示/非表示を切り替え）
-        const showDebugClearButton = true; // trueにすると表示される
+        const showDebugClearButton = false; // trueにすると表示される
         if (showDebugClearButton) {
             const clearButtonSize = 50;
             const clearButton = this.add.container(screenWidth - creditButtonSize - clearButtonSize - 20, screenHeight - clearButtonSize - 10);
