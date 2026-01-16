@@ -145,6 +145,13 @@ export class BackendStack extends cdk.Stack {
       handler: 'src/handlers/ranking.updateRanking',
     });
 
+    // ヘルスチェック用Lambda関数
+    const healthFunction = new lambda.Function(this, 'HealthFunction', {
+      ...lambdaCommonProps,
+      functionName: `horochi-winter-2026-backend-${stage}-health`,
+      handler: 'src/handlers/health.health',
+    });
+
     // API Gateway REST APIを作成
     const api = new apigateway.RestApi(this, 'BackendApi', {
       restApiName: `horochi-winter-2026-backend-${stage}`,
@@ -178,6 +185,10 @@ export class BackendStack extends cdk.Stack {
     const rankingsResource = api.root.addResource('rankings');
     rankingsResource.addMethod('GET', new apigateway.LambdaIntegration(getRankingFunction));
     rankingsResource.addMethod('POST', new apigateway.LambdaIntegration(updateRankingFunction));
+
+    // ヘルスチェックエンドポイント
+    const healthResource = api.root.addResource('health');
+    healthResource.addMethod('GET', new apigateway.LambdaIntegration(healthFunction));
 
     // 出力
     new cdk.CfnOutput(this, 'ApiUrl', {

@@ -108,10 +108,13 @@
         // デプロイ後にCDKの出力から取得したURLを設定してください
         // 例: window.API_BASE_URL = 'https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod';
         // 開発環境では未設定のまま（デフォルトで http://localhost:3000 が使用されます）
-        if (typeof window !== 'undefined' && !window.API_BASE_URL) {
-            // 本番環境のAPI Gateway URLを設定（デプロイ後に更新）
-            // window.API_BASE_URL = 'https://your-api-id.execute-api.ap-northeast-1.amazonaws.com/prod';
-        }
+        
+        // 本番環境のAPI Gateway URLを設定
+        // ローカル開発時はコメントアウトしてください（デフォルトで http://localhost:3000 が使用されます）
+        // window.API_BASE_URL = '';
+        
+        // デバッグ用: 設定されたURLをコンソールに表示
+        console.log('API_BASE_URL set to:', window.API_BASE_URL);
     </script>
     <script type="module">
         // タイムスタンプでキャッシュを強制的にバイパス
