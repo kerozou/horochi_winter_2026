@@ -28,6 +28,20 @@ export class EntryScene extends Phaser.Scene {
         localStorage.removeItem('isOfflineMode');
         console.log('Cleared user authentication cache');
         
+        // カメラが初期化されているか確認
+        if (!this.cameras || !this.cameras.main) {
+            console.error('Camera not initialized in create()');
+            // カメラが初期化されていない場合は少し待ってから再試行
+            this.time.delayedCall(100, () => {
+                if (this.cameras && this.cameras.main) {
+                    this.create();
+                } else {
+                    console.error('Camera still not initialized after delay');
+                }
+            });
+            return;
+        }
+        
         const screenWidth = this.cameras.main.width;
         const screenHeight = this.cameras.main.height;
         const centerX = screenWidth / 2;
@@ -194,6 +208,12 @@ export class EntryScene extends Phaser.Scene {
      * サーバーへの疎通確認
      */
     async checkServerConnection() {
+        // カメラが初期化されているか確認
+        if (!this.cameras || !this.cameras.main) {
+            console.error('Camera not initialized in checkServerConnection');
+            return;
+        }
+        
         const screenWidth = this.cameras.main.width;
         const screenHeight = this.cameras.main.height;
         const centerX = screenWidth / 2;
@@ -368,8 +388,8 @@ export class EntryScene extends Phaser.Scene {
             // ローディング表示
             this.showLoading();
             
-            // タイトルシーンに遷移
-            this.transitionToTitle(userId);
+            // リソースをロードしてからタイトルシーンに遷移
+            this.loadResourcesAndTransition(userId);
             return true;
         };
         
@@ -453,12 +473,9 @@ export class EntryScene extends Phaser.Scene {
                 // 入力フォームを削除
                 this.removeInputForms();
                 
-                // ローディング表示
-                this.showLoading();
-                
-                // タイトルシーンに遷移（ユーザーIDを渡す）
-                console.log('Transitioning to TitleScene with userId:', response.data.user?.userId);
-                this.transitionToTitle(response.data.user?.userId);
+                // リソースをロードしてからタイトルシーンに遷移
+                console.log('Loading resources before transitioning to TitleScene');
+                this.loadResourcesAndTransition(response.data.user?.userId);
             } else {
                 this.showError('ユーザーIDが使用されている、もしくはパスワードを間違えています');
             }
@@ -593,6 +610,12 @@ export class EntryScene extends Phaser.Scene {
      * ローディング表示
      */
     showLoading() {
+        // カメラが初期化されているか確認
+        if (!this.cameras || !this.cameras.main) {
+            console.error('Camera not initialized in showLoading');
+            return;
+        }
+        
         const screenWidth = this.cameras.main.width;
         const screenHeight = this.cameras.main.height;
         const centerX = screenWidth / 2;
@@ -626,6 +649,224 @@ export class EntryScene extends Phaser.Scene {
         });
         
         this.loadingText = loadingText;
+    }
+    
+    /**
+     * リソースをロードしてからタイトルシーンに遷移
+     * @param {string} userId - ユーザーID
+     */
+    loadResourcesAndTransition(userId) {
+        // カメラが初期化されているか確認
+        if (!this.cameras || !this.cameras.main) {
+            console.error('Camera not initialized in loadResourcesAndTransition');
+            // カメラが初期化されていない場合は直接遷移
+            this.transitionToTitle(userId);
+            return;
+        }
+        
+        const screenWidth = this.cameras.main.width;
+        const screenHeight = this.cameras.main.height;
+        const centerX = screenWidth / 2;
+        const centerY = screenHeight / 2;
+        
+        // ローディングテキスト
+        const loadingText = this.add.text(
+            centerX,
+            centerY - 50,
+            'リソースを読み込み中...',
+            {
+                fontSize: '32px',
+                fill: '#ffffff',
+                fontStyle: 'bold',
+                stroke: '#000000',
+                strokeThickness: 4
+            }
+        );
+        loadingText.setOrigin(0.5);
+        loadingText.setScrollFactor(0);
+        loadingText.setDepth(2000);
+        
+        // プログレスバーの背景
+        const progressBarBg = this.add.rectangle(
+            centerX,
+            centerY + 30,
+            screenWidth * 0.6,
+            30,
+            0x333333
+        );
+        progressBarBg.setOrigin(0.5);
+        progressBarBg.setScrollFactor(0);
+        progressBarBg.setDepth(2000);
+        
+        // プログレスバー
+        const progressBar = this.add.rectangle(
+            centerX - (screenWidth * 0.6) / 2,
+            centerY + 30,
+            0,
+            30,
+            0x00ff00
+        );
+        progressBar.setOrigin(0, 0.5);
+        progressBar.setScrollFactor(0);
+        progressBar.setDepth(2001);
+        
+        // パーセンテージ表示
+        const progressText = this.add.text(
+            centerX,
+            centerY + 80,
+            '0%',
+            {
+                fontSize: '24px',
+                fill: '#ffffff',
+                fontStyle: 'bold',
+                stroke: '#000000',
+                strokeThickness: 2
+            }
+        );
+        progressText.setOrigin(0.5);
+        progressText.setScrollFactor(0);
+        progressText.setDepth(2000);
+        
+        // リソースをロード
+        this.loadAllResources();
+        
+        // プログレス更新イベント
+        this.load.on('progress', (progress) => {
+            const width = (screenWidth * 0.6) * progress;
+            progressBar.width = width;
+            progressBar.x = centerX - (screenWidth * 0.6) / 2;
+            progressText.setText(Math.round(progress * 100) + '%');
+        });
+        
+        // ロード完了イベント
+        this.load.once('complete', () => {
+            console.log('All resources loaded');
+            
+            // プログレスバーを削除
+            loadingText.destroy();
+            progressBarBg.destroy();
+            progressBar.destroy();
+            progressText.destroy();
+            
+            // タイトルシーンに遷移
+            this.transitionToTitle(userId);
+        });
+        
+        // ロード開始
+        this.load.start();
+    }
+    
+    /**
+     * すべてのリソースをロード
+     */
+    loadAllResources() {
+        // 画像リソース
+        if (!this.textures.exists('horochi')) {
+            this.load.image('horochi', 'resources/horochi.png');
+        }
+        
+        // 背景画像（6種類）
+        for (let i = 1; i <= 6; i++) {
+            const texKey = `bg_${i}`;
+            if (!this.textures.exists(texKey)) {
+                this.load.image(texKey, `resources/bg_${i}.png`);
+            }
+        }
+        
+        // リザルト表示用の画像
+        if (!this.textures.exists('iei')) {
+            this.load.image('iei', 'resources/iei.png');
+        }
+        if (!this.textures.exists('horonbia')) {
+            this.load.image('horonbia', 'resources/horonbia.jpg');
+        }
+        if (!this.textures.exists('hororo_keirei')) {
+            this.load.image('hororo_keirei', 'resources/hororo_keirei.png');
+        }
+        if (!this.textures.exists('eru_back')) {
+            this.load.image('eru_back', 'resources/eru_back.png');
+        }
+        if (!this.textures.exists('hirameki_back')) {
+            this.load.image('hirameki_back', 'resources/hirameki_back.png');
+        }
+        if (!this.textures.exists('binba_back')) {
+            this.load.image('binba_back', 'resources/binba_back.png');
+        }
+        if (!this.textures.exists('bg_black')) {
+            this.load.image('bg_black', 'resources/bg_black.png');
+        }
+        if (!this.textures.exists('kirakira')) {
+            this.load.image('kirakira', 'resources/kirakira.png');
+        }
+        if (!this.textures.exists('smokeTemp')) {
+            this.load.image('smokeTemp', 'resources/smoke.png');
+        }
+        
+        // スプライトシート
+        if (!this.textures.exists('stampFlowerGrid')) {
+            this.load.spritesheet('stampFlowerGrid', 'resources/STAMP_flower_01_sheet.png', {
+                frameWidth: 875 / 5,
+                frameHeight: 477 / 3
+            });
+        }
+        if (!this.textures.exists('stampKiraGrid')) {
+            this.load.spritesheet('stampKiraGrid', 'resources/STAMP_kira_04_sheet.png', {
+                frameWidth: 2250 / 5,
+                frameHeight: 1800 / 4
+            });
+        }
+        if (!this.textures.exists('syuutyuuGrid')) {
+            this.load.spritesheet('syuutyuuGrid', 'resources/syuutyuu.png', {
+                frameWidth: 6935 / 5,
+                frameHeight: 3120 / 4
+            });
+        }
+        
+        // 音声リソース
+        if (!this.cache.audio.exists('bgm')) {
+            this.load.audio('bgm', 'resources/BGM.mp3');
+        }
+        if (!this.cache.audio.exists('gameBGM')) {
+            this.load.audio('gameBGM', 'resources/maou_bgm_neorock68.ogg');
+        }
+        if (!this.cache.audio.exists('deci')) {
+            this.load.audio('deci', 'resources/deci.mp3');
+        }
+        if (!this.cache.audio.exists('cv001')) {
+            this.load.audio('cv001', 'resources/cv001.wav');
+        }
+        if (!this.cache.audio.exists('end')) {
+            this.load.audio('end', 'resources/end.mp3');
+        }
+        if (!this.cache.audio.exists('bomb')) {
+            this.load.audio('bomb', 'resources/bomb.mp3');
+        }
+        if (!this.cache.audio.exists('uo')) {
+            this.load.audio('uo', 'resources/uo.wav');
+        }
+        if (!this.cache.audio.exists('oe')) {
+            this.load.audio('oe', 'resources/oe.wav');
+        }
+        if (!this.cache.audio.exists('setti')) {
+            this.load.audio('setti', 'resources/setti.mp3');
+        }
+        if (!this.cache.audio.exists('cancel')) {
+            this.load.audio('cancel', 'resources/cancel.mp3');
+        }
+        if (!this.cache.audio.exists('scratch2')) {
+            this.load.audio('scratch2', 'resources/scratch2.mp3');
+        }
+        if (!this.cache.audio.exists('ng')) {
+            this.load.audio('ng', 'resources/ng.mp3');
+        }
+        
+        // JSONリソース
+        if (!this.cache.json.exists('shibou')) {
+            this.load.json('shibou', 'resources/shibou.json');
+        }
+        if (!this.cache.json.exists('cv')) {
+            this.load.json('cv', 'resources/cv.json');
+        }
     }
     
     /**

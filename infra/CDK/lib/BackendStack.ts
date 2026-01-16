@@ -67,7 +67,7 @@ export class BackendStack extends cdk.Stack {
       runtime: lambda.Runtime.NODEJS_18_X,
       role: lambdaRole,
       timeout: cdk.Duration.seconds(30), // タイムアウトを30秒に設定
-      memorySize: 256, // メモリサイズを256MBに設定
+      memorySize: 1024, // メモリサイズを1GB（1024MB）に設定
       environment: {
         STAGE: stage,
         DYNAMODB_TABLE_USERS: usersTable.tableName,
