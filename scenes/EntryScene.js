@@ -230,7 +230,7 @@ export class EntryScene extends Phaser.Scene {
             const timeoutId = setTimeout(() => controller.abort(), 3000);
             
             try {
-                // 簡単なエンドポイントにリクエストを送る（存在しないエンドポイントでもOK、ネットワークエラーを検出するため）
+                // ヘルスチェックエンドポイントにリクエストを送る
                 const response = await fetch(`${this.apiClient.baseUrl}/health`, {
                     method: 'GET',
                     signal: controller.signal,
@@ -240,30 +240,44 @@ export class EntryScene extends Phaser.Scene {
                 });
                 clearTimeout(timeoutId);
                 
-                // レスポンスが返ってきた場合は接続成功（404でも接続できているとみなす）
-                console.log('Server connection successful');
+                // レスポンスが返ってきた場合は接続成功（404、502、500でもAPI Gatewayに接続できているとみなす）
+                // 404: エンドポイントが存在しない（API Gatewayに接続できている）
+                // 502/500: Lambda関数でエラー（API Gatewayに接続できている）
+                // 200: 正常（API Gatewayに接続できている）
+                console.log('Server connection successful, status:', response.status);
                 this.offlineModeText.setVisible(false);
             } catch (error) {
                 clearTimeout(timeoutId);
                 
-                // ネットワークエラー（接続できない）の場合
-                if (error.name === 'AbortError' || 
-                    (error.name === 'TypeError' && error.message.includes('fetch'))) {
-                    console.warn('Server connection failed, showing offline mode message');
+                // タイムアウトエラーの場合
+                if (error.name === 'AbortError') {
+                    console.warn('Server connection timeout, showing offline mode message');
                     this.offlineModeText.setVisible(true);
-                } else {
-                    // その他のエラー（CORSエラーなど）は接続できている可能性があるとみなす
-                    // ただし、明確にネットワークエラーの場合はオフラインモード表示
+                    return;
+                }
+                
+                // TypeError（Failed to fetch）の場合、詳細を確認
+                if (error.name === 'TypeError' && error.message.includes('fetch')) {
+                    // 実際のネットワークエラーかどうかを判断するため、エラーメッセージを確認
                     const errorMessage = error.message || '';
-                    if (errorMessage.includes('Failed to fetch') || 
-                        errorMessage.includes('NetworkError') ||
-                        errorMessage.includes('ERR_CONNECTION_REFUSED')) {
-                        console.warn('Server connection failed, showing offline mode message');
+                    
+                    // 明確にネットワーク接続エラーの場合のみオフラインモード表示
+                    // CORSエラーや502エラーなどは、API Gatewayに接続できているとみなす
+                    if (errorMessage.includes('ERR_CONNECTION_REFUSED') ||
+                        errorMessage.includes('ERR_NAME_NOT_RESOLVED') ||
+                        errorMessage.includes('ERR_NETWORK_CHANGED') ||
+                        errorMessage.includes('ERR_INTERNET_DISCONNECTED')) {
+                        console.warn('Network connection error, showing offline mode message');
                         this.offlineModeText.setVisible(true);
                     } else {
-                        console.log('Server might be reachable (got error but not network error)');
+                        // その他のエラー（CORS、502など）はAPI Gatewayに接続できているとみなす
+                        console.log('API Gateway is reachable (got error but not network connection error)');
                         this.offlineModeText.setVisible(false);
                     }
+                } else {
+                    // その他のエラーは接続できている可能性があるとみなす
+                    console.log('Server might be reachable (got error but not network error)');
+                    this.offlineModeText.setVisible(false);
                 }
             }
         } catch (error) {
@@ -366,29 +380,17 @@ export class EntryScene extends Phaser.Scene {
             try {
                 response = await this.apiClient.login(userId, password);
             } catch (loginError) {
-                // ネットワークエラーの場合はオフラインモードにフォールバック
-                if (loginError.message && (
-                    loginError.message.includes('ネットワークエラー') ||
-                    loginError.message.includes('接続できません') ||
-                    loginError.name === 'TypeError'
-                )) {
-                    console.warn('Network error during login, falling back to offline mode');
-                    isNetworkError = true;
-                } else {
+                // ネットワークエラーまたはCORSエラーの場合はオフラインモードにフォールバック
+                // ただし、ステータスコードが設定されている場合は、API Gatewayに接続できているとみなす
+                if (loginError.status) {
+                    // API Gatewayに接続できているが、Lambda関数でエラーが発生した場合
                     // ログインに失敗した場合は登録を試みる
                     try {
                         response = await this.apiClient.register(userId, password);
                     } catch (registerError) {
-                        // ネットワークエラーの場合はオフラインモードにフォールバック
-                        if (registerError.message && (
-                            registerError.message.includes('ネットワークエラー') ||
-                            registerError.message.includes('接続できません') ||
-                            registerError.name === 'TypeError'
-                        )) {
-                            console.warn('Network error during register, falling back to offline mode');
-                            isNetworkError = true;
-                        } else {
-                            // 登録も失敗した場合
+                        // 登録も失敗した場合
+                        if (registerError.status) {
+                            // API Gatewayに接続できているが、Lambda関数でエラーが発生した場合
                             const errorMessage = registerError.message || 'エラーが発生しました';
                             if (errorMessage.includes('already exists') || errorMessage.includes('User ID already exists')) {
                                 this.showError('ユーザーIDが使用されている、もしくはパスワードを間違えています');
@@ -396,8 +398,16 @@ export class EntryScene extends Phaser.Scene {
                                 this.showError('ユーザーIDが使用されている、もしくはパスワードを間違えています');
                             }
                             return;
+                        } else {
+                            // ネットワークエラーまたはCORSエラーの場合
+                            console.warn('Network error during register, falling back to offline mode');
+                            isNetworkError = true;
                         }
                     }
+                } else {
+                    // ネットワークエラーまたはCORSエラーの場合
+                    console.warn('Network error during login, falling back to offline mode');
+                    isNetworkError = true;
                 }
             }
             
@@ -446,12 +456,17 @@ export class EntryScene extends Phaser.Scene {
             }
         } catch (error) {
             console.error('Login/Register error:', error);
-            // ネットワークエラーの場合はオフラインモードにフォールバック
-            if (error.message && (
+            // ネットワークエラーまたはCORSエラーの場合はオフラインモードにフォールバック
+            // ただし、ステータスコードが設定されている場合は、API Gatewayに接続できているとみなす
+            if (error.status) {
+                // API Gatewayに接続できているが、Lambda関数でエラーが発生した場合
+                this.showError('ユーザーIDが使用されている、もしくはパスワードを間違えています');
+            } else if (error.message && (
                 error.message.includes('ネットワークエラー') ||
                 error.message.includes('接続できません') ||
                 error.name === 'TypeError'
             )) {
+                // ネットワークエラーまたはCORSエラーの場合
                 console.warn('Network error, falling back to offline mode');
                 useOfflineMode();
             } else {

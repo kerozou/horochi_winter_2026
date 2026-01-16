@@ -52,7 +52,14 @@ export class ApiClient {
             // レスポンスがJSONかどうかを確認
             const contentType = response.headers.get('content-type');
             if (contentType && contentType.includes('application/json')) {
-                data = await response.json();
+                try {
+                    data = await response.json();
+                } catch (jsonError) {
+                    // JSON解析エラーの場合、テキストとして読み取る
+                    const text = await response.text();
+                    console.error('JSON parse error, response text:', text);
+                    throw new Error(`JSON解析エラー: ${text || `HTTP error! status: ${response.status}`}`);
+                }
             } else {
                 const text = await response.text();
                 console.error('Non-JSON response:', text);
@@ -72,12 +79,19 @@ export class ApiClient {
             console.error('Request URL:', url);
             console.error('Request config:', config);
             
+            // レスポンスが返ってきた場合（ステータスコードエラーなど）
+            if (error.status) {
+                // これはAPI Gatewayに接続できているが、Lambda関数でエラーが発生した場合
+                // または、API Gatewayがエラーレスポンスを返した場合
+                throw error;
+            }
+            
             // CORSエラーの場合
             if (error.message.includes('CORS') || error.message.includes('Access-Control')) {
                 throw new Error('CORSエラーが発生しました。API GatewayのCORS設定を確認してください。');
             }
             
-            // ネットワークエラーの場合
+            // ネットワークエラーの場合（fetch自体が失敗した場合）
             if (error.name === 'TypeError' && error.message.includes('fetch')) {
                 // より詳細なエラーメッセージを提供
                 const errorMessage = error.message || 'Unknown error';
@@ -86,7 +100,11 @@ export class ApiClient {
                     message: error.message,
                     stack: error.stack
                 });
-                throw new Error(`ネットワークエラーが発生しました。サーバーに接続できません。詳細: ${errorMessage}`);
+                
+                // CORSエラーの可能性がある場合（プリフライトリクエストが失敗）
+                // 実際のネットワークエラーとCORSエラーを区別するのは困難なため、
+                // エラーメッセージに「ネットワークエラーまたはCORSエラー」と表示
+                throw new Error(`ネットワークエラーまたはCORSエラーが発生しました。サーバーに接続できません。詳細: ${errorMessage}`);
             }
             throw error;
         }
