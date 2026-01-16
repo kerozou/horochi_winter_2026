@@ -177,133 +177,67 @@ export class BackendStack extends cdk.Stack {
     // 認証エンドポイント
     const authResource = api.root.addResource('auth');
     const loginResource = authResource.addResource('login');
-    loginResource.addMethod('POST', new apigateway.LambdaIntegration(loginFunction, {
+    const loginIntegration = new apigateway.LambdaIntegration(loginFunction, {
       proxy: true,
-    }), {
-      methodResponses: [{
-        statusCode: '200',
-        responseParameters: {
-          'method.response.header.Access-Control-Allow-Origin': true,
-        },
-      }],
     });
+    loginResource.addMethod('POST', loginIntegration);
     
     const registerResource = authResource.addResource('register');
-    registerResource.addMethod('POST', new apigateway.LambdaIntegration(registerFunction, {
+    const registerIntegration = new apigateway.LambdaIntegration(registerFunction, {
       proxy: true,
-    }), {
-      methodResponses: [{
-        statusCode: '200',
-        responseParameters: {
-          'method.response.header.Access-Control-Allow-Origin': true,
-        },
-      }],
     });
+    registerResource.addMethod('POST', registerIntegration);
     
     const userResource = authResource.addResource('user');
-    userResource.addMethod('GET', new apigateway.LambdaIntegration(getUserFunction, {
+    const getUserIntegration = new apigateway.LambdaIntegration(getUserFunction, {
       proxy: true,
-    }), {
-      methodResponses: [{
-        statusCode: '200',
-        responseParameters: {
-          'method.response.header.Access-Control-Allow-Origin': true,
-        },
-      }],
     });
+    userResource.addMethod('GET', getUserIntegration);
 
     // トロフィーエンドポイント
     const trophiesResource = api.root.addResource('trophies');
-    trophiesResource.addMethod('GET', new apigateway.LambdaIntegration(getTrophiesFunction, {
+    const getTrophiesIntegration = new apigateway.LambdaIntegration(getTrophiesFunction, {
       proxy: true,
-    }), {
-      methodResponses: [{
-        statusCode: '200',
-        responseParameters: {
-          'method.response.header.Access-Control-Allow-Origin': true,
-        },
-      }],
     });
-    trophiesResource.addMethod('PUT', new apigateway.LambdaIntegration(updateTrophiesFunction, {
+    trophiesResource.addMethod('GET', getTrophiesIntegration);
+    const updateTrophiesIntegration = new apigateway.LambdaIntegration(updateTrophiesFunction, {
       proxy: true,
-    }), {
-      methodResponses: [{
-        statusCode: '200',
-        responseParameters: {
-          'method.response.header.Access-Control-Allow-Origin': true,
-        },
-      }],
     });
+    trophiesResource.addMethod('PUT', updateTrophiesIntegration);
 
     // お気に入りエンドポイント
     const favoritesResource = api.root.addResource('favorites');
-    favoritesResource.addMethod('GET', new apigateway.LambdaIntegration(getFavoritesFunction, {
+    const getFavoritesIntegration = new apigateway.LambdaIntegration(getFavoritesFunction, {
       proxy: true,
-    }), {
-      methodResponses: [{
-        statusCode: '200',
-        responseParameters: {
-          'method.response.header.Access-Control-Allow-Origin': true,
-        },
-      }],
     });
-    favoritesResource.addMethod('POST', new apigateway.LambdaIntegration(saveFavoriteFunction, {
+    favoritesResource.addMethod('GET', getFavoritesIntegration);
+    const saveFavoriteIntegration = new apigateway.LambdaIntegration(saveFavoriteFunction, {
       proxy: true,
-    }), {
-      methodResponses: [{
-        statusCode: '200',
-        responseParameters: {
-          'method.response.header.Access-Control-Allow-Origin': true,
-        },
-      }],
     });
+    favoritesResource.addMethod('POST', saveFavoriteIntegration);
     const favoriteIdResource = favoritesResource.addResource('{id}');
-    favoriteIdResource.addMethod('DELETE', new apigateway.LambdaIntegration(deleteFavoriteFunction, {
+    const deleteFavoriteIntegration = new apigateway.LambdaIntegration(deleteFavoriteFunction, {
       proxy: true,
-    }), {
-      methodResponses: [{
-        statusCode: '200',
-        responseParameters: {
-          'method.response.header.Access-Control-Allow-Origin': true,
-        },
-      }],
     });
+    favoriteIdResource.addMethod('DELETE', deleteFavoriteIntegration);
 
     // ランキングエンドポイント
     const rankingsResource = api.root.addResource('rankings');
-    rankingsResource.addMethod('GET', new apigateway.LambdaIntegration(getRankingFunction, {
+    const getRankingIntegration = new apigateway.LambdaIntegration(getRankingFunction, {
       proxy: true,
-    }), {
-      methodResponses: [{
-        statusCode: '200',
-        responseParameters: {
-          'method.response.header.Access-Control-Allow-Origin': true,
-        },
-      }],
     });
-    rankingsResource.addMethod('POST', new apigateway.LambdaIntegration(updateRankingFunction, {
+    rankingsResource.addMethod('GET', getRankingIntegration);
+    const updateRankingIntegration = new apigateway.LambdaIntegration(updateRankingFunction, {
       proxy: true,
-    }), {
-      methodResponses: [{
-        statusCode: '200',
-        responseParameters: {
-          'method.response.header.Access-Control-Allow-Origin': true,
-        },
-      }],
     });
+    rankingsResource.addMethod('POST', updateRankingIntegration);
 
     // ヘルスチェックエンドポイント
     const healthResource = api.root.addResource('health');
-    healthResource.addMethod('GET', new apigateway.LambdaIntegration(healthFunction, {
+    const healthIntegration = new apigateway.LambdaIntegration(healthFunction, {
       proxy: true,
-    }), {
-      methodResponses: [{
-        statusCode: '200',
-        responseParameters: {
-          'method.response.header.Access-Control-Allow-Origin': true,
-        },
-      }],
     });
+    healthResource.addMethod('GET', healthIntegration);
 
     // 出力
     new cdk.CfnOutput(this, 'ApiUrl', {

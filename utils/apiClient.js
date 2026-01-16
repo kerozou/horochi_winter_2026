@@ -87,7 +87,7 @@ export class ApiClient {
             }
             
             // CORSエラーの場合
-            if (error.message.includes('CORS') || error.message.includes('Access-Control')) {
+            if (error.message && (error.message.includes('CORS') || error.message.includes('Access-Control'))) {
                 throw new Error('CORSエラーが発生しました。API GatewayのCORS設定を確認してください。');
             }
             
@@ -104,7 +104,10 @@ export class ApiClient {
                 // CORSエラーの可能性がある場合（プリフライトリクエストが失敗）
                 // 実際のネットワークエラーとCORSエラーを区別するのは困難なため、
                 // エラーメッセージに「ネットワークエラーまたはCORSエラー」と表示
-                throw new Error(`ネットワークエラーまたはCORSエラーが発生しました。サーバーに接続できません。詳細: ${errorMessage}`);
+                const detailedError = new Error(`ネットワークエラーまたはCORSエラーが発生しました。サーバーに接続できません。詳細: ${errorMessage}`);
+                detailedError.name = error.name;
+                detailedError.stack = error.stack;
+                throw detailedError;
             }
             throw error;
         }
