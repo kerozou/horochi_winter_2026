@@ -178,9 +178,9 @@ export class EntryScene extends Phaser.Scene {
             this.passwordInput = passwordInput;
         }
         
-        // 登録/ログインボタン
+        // 登録/ログインボタン（左側）
         const loginButton = this.createButton(
-            centerX,
+            centerX - 250,
             centerY + 100,
             '登録/ログイン',
             () => {
@@ -188,6 +188,17 @@ export class EntryScene extends Phaser.Scene {
             }
         );
         this.loginButton = loginButton;
+        
+        // 「とにかくロケットを飛ばす」ボタン（右側）
+        const guestLoginButton = this.createButton(
+            centerX + 250,
+            centerY + 100,
+            '🚀 とにかくロケットを飛ばす',
+            () => {
+                this.handleGuestLogin();
+            }
+        );
+        this.guestLoginButton = guestLoginButton;
         
         // アニメーション効果（タイトル）
         this.tweens.add({
@@ -285,6 +296,129 @@ export class EntryScene extends Phaser.Scene {
             console.warn('Server connection check failed:', error);
             // エラーが発生した場合はオフラインモードとみなす
             this.offlineModeText.setVisible(true);
+        }
+    }
+    
+    /**
+     * ゲストユーザーでログイン（GUEST/guest）
+     */
+    async handleGuestLogin() {
+        const userId = 'GUEST';
+        const password = 'guest';
+        
+        // エラーメッセージを非表示
+        this.hideError();
+        
+        // オフラインモード（ローカルストレージを使用）
+        const useOfflineMode = () => {
+            // ローカルストレージに保存
+            localStorage.setItem('userId', userId);
+            localStorage.setItem('userPassword', password);
+            localStorage.setItem('isOfflineMode', 'true');
+            
+            console.log('Offline mode: Guest user logged in:', userId);
+            
+            // ランキング情報とトロフィー情報のキャッシュをクリア
+            this.clearUserDataCache();
+            
+            // 入力フォームを削除
+            this.removeInputForms();
+            
+            // ローディング表示
+            this.showLoading();
+            
+            // リソースをロードしてからタイトルシーンに遷移
+            this.loadResourcesAndTransition(userId);
+            return true;
+        };
+        
+        // APIクライアントが利用可能か確認
+        if (!this.apiClient) {
+            // APIクライアントが利用できない場合はオフラインモードを使用
+            console.warn('API client not available, using offline mode for guest');
+            useOfflineMode();
+            return;
+        }
+        
+        try {
+            // まずログインを試みる
+            let response;
+            let isNetworkError = false;
+            try {
+                response = await this.apiClient.login(userId, password);
+            } catch (loginError) {
+                // ネットワークエラーまたはCORSエラーの場合はオフラインモードにフォールバック
+                if (loginError.status) {
+                    // API Gatewayに接続できているが、Lambda関数でエラーが発生した場合
+                    // ログインに失敗した場合は登録を試みる
+                    try {
+                        response = await this.apiClient.register(userId, password);
+                    } catch (registerError) {
+                        // 登録も失敗した場合
+                        if (registerError.status) {
+                            // API Gatewayに接続できているが、Lambda関数でエラーが発生した場合
+                            // ゲストユーザーの場合はオフラインモードにフォールバック
+                            console.warn('Guest login/register failed, using offline mode');
+                            useOfflineMode();
+                            return;
+                        } else {
+                            // ネットワークエラーまたはCORSエラーの場合
+                            console.warn('Network error during guest register, falling back to offline mode');
+                            isNetworkError = true;
+                        }
+                    }
+                } else {
+                    // ネットワークエラーまたはCORSエラーの場合
+                    console.warn('Network error during guest login, falling back to offline mode');
+                    isNetworkError = true;
+                }
+            }
+            
+            // ネットワークエラーの場合はオフラインモードを使用
+            if (isNetworkError) {
+                useOfflineMode();
+                return;
+            }
+            
+            // 成功した場合
+            if (response && response.success && response.data) {
+                // トークンをlocalStorageに保存
+                if (response.data.token) {
+                    localStorage.setItem('authToken', response.data.token);
+                    console.log('Auth token saved for guest');
+                }
+                
+                // ユーザー情報をlocalStorageに保存
+                if (response.data.user && response.data.user.userId) {
+                    localStorage.setItem('userId', response.data.user.userId);
+                    console.log('Guest user ID saved:', response.data.user.userId);
+                }
+                
+                // オフラインモードフラグをクリア
+                localStorage.removeItem('isOfflineMode');
+                
+                // ランキング情報とトロフィー情報のキャッシュをクリア
+                this.clearUserDataCache();
+                
+                // サーバーから最新の情報をロード
+                await this.loadUserDataFromServer(response.data.user?.userId, response.data.token);
+                
+                // 入力フォームを削除
+                this.removeInputForms();
+                
+                // リソースをロードしてからタイトルシーンに遷移
+                console.log('Loading resources before transitioning to TitleScene (guest)');
+                this.loadResourcesAndTransition(response.data.user?.userId);
+            } else {
+                // ログイン/登録に失敗した場合はオフラインモードを使用
+                console.warn('Guest login/register failed, using offline mode');
+                useOfflineMode();
+            }
+        } catch (error) {
+            console.error('Guest login/Register error:', error);
+            // エラーが発生した場合はオフラインモードにフォールバック
+            console.warn('Error during guest login, falling back to offline mode');
+            useOfflineMode();
         }
     }
     
@@ -680,6 +814,9 @@ export class EntryScene extends Phaser.Scene {
         // ボタンを非表示
         if (this.loginButton) {
             this.loginButton.setVisible(false);
+        }
+        if (this.guestLoginButton) {
+            this.guestLoginButton.setVisible(false);
         }
     }
     
