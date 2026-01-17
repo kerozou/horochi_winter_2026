@@ -193,7 +193,7 @@ export class EntryScene extends Phaser.Scene {
         const guestLoginButton = this.createButton(
             centerX + 250,
             centerY + 100,
-            '🚀 とにかくロケットを飛ばす',
+            'ログインスキップ',
             () => {
                 this.handleGuestLogin();
             }
