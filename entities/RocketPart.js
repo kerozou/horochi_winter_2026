@@ -312,7 +312,7 @@ export class WeightPart extends RocketPart {
         this.width = 40;
         this.height = 40;
         this.color = 0x34495e;
-        this.mass = 10; // 非常に重い
+        this.mass = 30; // 非常に重い（3倍に増加）
         this.drag = 0.03;
         this.isRare = true;
     }
@@ -451,5 +451,239 @@ export class StabilizerPart extends RocketPart {
         this.drag = 0.01;
         this.stability = 1.5; // 非常に高い安定性
         this.isRare = true;
+    }
+}
+
+/**
+ * 赤パーツ1: 超高出力エンジン（赤）- 1個のみ使用可能
+ */
+export class RedEnginePart extends RocketPart {
+    constructor(x = 0, y = 0) {
+        super('redengine', x, y);
+        this.width = 50;
+        this.height = 50;
+        this.color = 0xe74c3c; // 赤色
+        this.mass = 50; // 非常に重い
+        this.thrust = 5000; // 超高出力
+        this.drag = 0.05;
+        this.angle = Math.PI / 2; // 下向き
+        this.isRedPart = true; // 赤パーツフラグ
+        this.maxCount = 1; // 1個のみ使用可能
+    }
+}
+
+/**
+ * 赤パーツ2: 超重量ボディ（赤）- 1個のみ使用可能
+ */
+export class RedBodyPart extends RocketPart {
+    constructor(x = 0, y = 0) {
+        super('redbody', x, y);
+        this.width = 60;
+        this.height = 60;
+        this.color = 0xc0392b; // 濃い赤色
+        this.mass = 100; // 超重量
+        this.drag = 0.08;
+        this.isRedPart = true; // 赤パーツフラグ
+        this.maxCount = 1; // 1個のみ使用可能
+    }
+}
+
+/**
+ * エンジン改造パーツ（テトリミノ）の基底クラス
+ */
+export class TetrominoPart extends RocketPart {
+    constructor(type, x = 0, y = 0) {
+        super(type, x, y);
+        this.blocks = []; // グリッド上の相対位置 [{x: 0, y: 0}, ...]
+        this.color = 0x3498db; // 青色
+        this.mass = 5; // 基本質量
+        this.thrust = 100; // 基本推力
+        this.drag = 0.01;
+        this.angle = Math.PI / 2; // 下向き
+        this.isTetromino = true;
+        this.rotation = 0; // 回転状態（0, 1, 2, 3）
+    }
+    
+    /**
+     * テトリミノを回転（90度）
+     */
+    rotate() {
+        this.rotation = (this.rotation + 1) % 4;
+        // 回転後のブロック位置を計算
+        this.blocks = this.getRotatedBlocks();
+    }
+    
+    /**
+     * 回転後のブロック位置を取得
+     */
+    getRotatedBlocks() {
+        // 各テトリミノでオーバーライド
+        return this.blocks;
+    }
+}
+
+/**
+ * I型テトリミノ（縦4マス）
+ */
+export class ITetromino extends TetrominoPart {
+    constructor(x = 0, y = 0) {
+        super('tetromino_i', x, y);
+        this.blocks = [{x: 0, y: 0}, {x: 0, y: 1}, {x: 0, y: 2}, {x: 0, y: 3}];
+        this.color = 0x00ffff; // シアン
+        this.mass = 4;
+        this.thrust = 400;
+        this.name = 'I型エンジン';
+    }
+    
+    getRotatedBlocks() {
+        if (this.rotation % 2 === 0) {
+            return [{x: 0, y: 0}, {x: 0, y: 1}, {x: 0, y: 2}, {x: 0, y: 3}];
+        } else {
+            return [{x: 0, y: 0}, {x: 1, y: 0}, {x: 2, y: 0}, {x: 3, y: 0}];
+        }
+    }
+}
+
+/**
+ * O型テトリミノ（2×2の正方形）
+ */
+export class OTetromino extends TetrominoPart {
+    constructor(x = 0, y = 0) {
+        super('tetromino_o', x, y);
+        this.blocks = [{x: 0, y: 0}, {x: 1, y: 0}, {x: 0, y: 1}, {x: 1, y: 1}];
+        this.color = 0xffff00; // 黄色
+        this.mass = 4;
+        this.thrust = 300;
+        this.name = 'O型エンジン';
+    }
+    
+    getRotatedBlocks() {
+        // O型は回転しても同じ
+        return this.blocks;
+    }
+}
+
+/**
+ * T型テトリミノ
+ */
+export class TTetromino extends TetrominoPart {
+    constructor(x = 0, y = 0) {
+        super('tetromino_t', x, y);
+        this.blocks = [{x: 0, y: 0}, {x: 1, y: 0}, {x: 2, y: 0}, {x: 1, y: 1}];
+        this.color = 0x9b59b6; // 紫色
+        this.mass = 4;
+        this.thrust = 350;
+        this.name = 'T型エンジン';
+    }
+    
+    getRotatedBlocks() {
+        const base = [{x: 0, y: 0}, {x: 1, y: 0}, {x: 2, y: 0}, {x: 1, y: 1}];
+        const rotations = [
+            base,
+            [{x: 1, y: 0}, {x: 0, y: 1}, {x: 1, y: 1}, {x: 1, y: 2}],
+            [{x: 1, y: 0}, {x: 0, y: 1}, {x: 1, y: 1}, {x: 2, y: 1}],
+            [{x: 1, y: 0}, {x: 1, y: 1}, {x: 0, y: 2}, {x: 1, y: 2}]
+        ];
+        return rotations[this.rotation];
+    }
+}
+
+/**
+ * S型テトリミノ
+ */
+export class STetromino extends TetrominoPart {
+    constructor(x = 0, y = 0) {
+        super('tetromino_s', x, y);
+        this.blocks = [{x: 1, y: 0}, {x: 2, y: 0}, {x: 0, y: 1}, {x: 1, y: 1}];
+        this.color = 0x2ecc71; // 緑色
+        this.mass = 4;
+        this.thrust = 350;
+        this.name = 'S型エンジン';
+    }
+    
+    getRotatedBlocks() {
+        const base = [{x: 1, y: 0}, {x: 2, y: 0}, {x: 0, y: 1}, {x: 1, y: 1}];
+        const rotations = [
+            base,
+            [{x: 1, y: 0}, {x: 1, y: 1}, {x: 2, y: 1}, {x: 2, y: 2}],
+            base,
+            [{x: 1, y: 0}, {x: 1, y: 1}, {x: 2, y: 1}, {x: 2, y: 2}]
+        ];
+        return rotations[this.rotation];
+    }
+}
+
+/**
+ * Z型テトリミノ
+ */
+export class ZTetromino extends TetrominoPart {
+    constructor(x = 0, y = 0) {
+        super('tetromino_z', x, y);
+        this.blocks = [{x: 0, y: 0}, {x: 1, y: 0}, {x: 1, y: 1}, {x: 2, y: 1}];
+        this.color = 0xe74c3c; // 赤色
+        this.mass = 4;
+        this.thrust = 350;
+        this.name = 'Z型エンジン';
+    }
+    
+    getRotatedBlocks() {
+        const base = [{x: 0, y: 0}, {x: 1, y: 0}, {x: 1, y: 1}, {x: 2, y: 1}];
+        const rotations = [
+            base,
+            [{x: 2, y: 0}, {x: 1, y: 1}, {x: 2, y: 1}, {x: 1, y: 2}],
+            base,
+            [{x: 2, y: 0}, {x: 1, y: 1}, {x: 2, y: 1}, {x: 1, y: 2}]
+        ];
+        return rotations[this.rotation];
+    }
+}
+
+/**
+ * J型テトリミノ
+ */
+export class JTetromino extends TetrominoPart {
+    constructor(x = 0, y = 0) {
+        super('tetromino_j', x, y);
+        this.blocks = [{x: 0, y: 0}, {x: 0, y: 1}, {x: 1, y: 1}, {x: 2, y: 1}];
+        this.color = 0x3498db; // 青色
+        this.mass = 4;
+        this.thrust = 350;
+        this.name = 'J型エンジン';
+    }
+    
+    getRotatedBlocks() {
+        const base = [{x: 0, y: 0}, {x: 0, y: 1}, {x: 1, y: 1}, {x: 2, y: 1}];
+        const rotations = [
+            base,
+            [{x: 1, y: 0}, {x: 2, y: 0}, {x: 1, y: 1}, {x: 1, y: 2}],
+            [{x: 0, y: 1}, {x: 1, y: 1}, {x: 2, y: 1}, {x: 2, y: 2}],
+            [{x: 1, y: 0}, {x: 1, y: 1}, {x: 0, y: 2}, {x: 1, y: 2}]
+        ];
+        return rotations[this.rotation];
+    }
+}
+
+/**
+ * L型テトリミノ
+ */
+export class LTetromino extends TetrominoPart {
+    constructor(x = 0, y = 0) {
+        super('tetromino_l', x, y);
+        this.blocks = [{x: 2, y: 0}, {x: 0, y: 1}, {x: 1, y: 1}, {x: 2, y: 1}];
+        this.color = 0xf39c12; // オレンジ
+        this.mass = 4;
+        this.thrust = 350;
+        this.name = 'L型エンジン';
+    }
+    
+    getRotatedBlocks() {
+        const base = [{x: 2, y: 0}, {x: 0, y: 1}, {x: 1, y: 1}, {x: 2, y: 1}];
+        const rotations = [
+            base,
+            [{x: 1, y: 0}, {x: 1, y: 1}, {x: 1, y: 2}, {x: 2, y: 2}],
+            [{x: 0, y: 1}, {x: 1, y: 1}, {x: 2, y: 1}, {x: 0, y: 2}],
+            [{x: 0, y: 0}, {x: 1, y: 0}, {x: 1, y: 1}, {x: 1, y: 2}]
+        ];
+        return rotations[this.rotation];
     }
 }

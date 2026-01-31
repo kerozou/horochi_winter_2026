@@ -24,36 +24,6 @@ export class RocketEditorScene extends Phaser.Scene {
             // ロケット設計データを初期化
             this.rocketDesign = new RocketDesign();
             
-            // 達成済みトロフィーをロード
-            const unlockedTrophies = this.loadUnlockedTrophies();
-            console.log('Unlocked trophies:', unlockedTrophies.length);
-            
-            // すべての通常パーツを取得（レアパーツ除外）
-            // COMPOSITE_PART_TEMPLATESから直接取得して、すべての通常パーツを表示
-            this.availableCompositeParts = COMPOSITE_PART_TEMPLATES.filter(cp => {
-                // レアパーツかどうかを判定
-                const hasRare = cp.parts.some(p => {
-                    const partType = typeof p === 'object' ? p.type : p;
-                    return ['superengine', 'ultralightengine', 'microengine', 'dualengine', 
-                            'weight', 'ultralightnose', 'reinforcedbody', 'megafueltank', 
-                            'largewing', 'stabilizer'].includes(partType);
-                });
-                // レアパーツは除外
-                return !hasRare;
-            });
-            
-            // コックピットを取得（自動配置用）
-            const allParts = getUnlockedCompositeParts(unlockedTrophies);
-            this.cockpitPart = allParts[0]; // 最初はコックピット
-            
-            // 制限なし - すべての通常パーツを表示
-            console.log('Available composite parts (excluding rare):', this.availableCompositeParts.length, 'parts');
-            console.log('Part names:', this.availableCompositeParts.map(p => p.name));
-            
-            // コックピットを保存（自動配置用）
-            this.cockpitPart = allParts[0]; // 最初はコックピット
-            console.log('Cockpit part saved:', this.cockpitPart?.name);
-            
             console.log('RocketEditorScene: Ready to create new design');
         } catch (error) {
             console.error('Error in RocketEditorScene.init():', error);
@@ -65,9 +35,33 @@ export class RocketEditorScene extends Phaser.Scene {
     /**
      * 達成済みトロフィーをロード
      */
-    loadUnlockedTrophies() {
-        const saved = localStorage.getItem('unlockedTrophies');
-        return saved ? JSON.parse(saved) : [];
+    async loadUnlockedTrophies() {
+        try {
+            const { getApiClient } = await import('../utils/apiClient.js');
+            const apiClient = getApiClient();
+            const authToken = localStorage.getItem('authToken');
+            
+            if (!authToken) {
+                // トークンがない場合はローカルストレージから取得
+                const saved = localStorage.getItem('unlockedTrophies');
+                return saved ? JSON.parse(saved) : [];
+            }
+            
+            // APIからトロフィー情報を取得
+            const response = await apiClient.getTrophies(authToken);
+            const trophyData = response.data || {};
+            const unlockedList = trophyData.unlockedTrophies || [];
+            
+            // ローカルストレージにも保存（オフライン対応）
+            localStorage.setItem('unlockedTrophies', JSON.stringify(unlockedList));
+            
+            return unlockedList;
+        } catch (error) {
+            console.error('Error loading trophies from API:', error);
+            // エラー時はローカルストレージから取得
+            const saved = localStorage.getItem('unlockedTrophies');
+            return saved ? JSON.parse(saved) : [];
+        }
     }
     
     /**
@@ -228,9 +222,37 @@ export class RocketEditorScene extends Phaser.Scene {
         }
     }
     
-    create() {
+    async create() {
         try {
             console.log('RocketEditorScene: create() called');
+            
+            // 達成済みトロフィーをロード
+            const unlockedTrophies = await this.loadUnlockedTrophies();
+            console.log('Unlocked trophies:', unlockedTrophies.length);
+            
+            // すべての通常パーツを取得（レアパーツ除外）
+            // COMPOSITE_PART_TEMPLATESから直接取得して、すべての通常パーツを表示
+            this.availableCompositeParts = COMPOSITE_PART_TEMPLATES.filter(cp => {
+                // レアパーツかどうかを判定
+                const hasRare = cp.parts.some(p => {
+                    const partType = typeof p === 'object' ? p.type : p;
+                    // weightは通常パーツとして使用可能にする
+                    return ['superengine', 'ultralightengine', 'microengine', 'dualengine', 
+                            'ultralightnose', 'reinforcedbody', 'megafueltank', 
+                            'largewing', 'stabilizer'].includes(partType);
+                });
+                // レアパーツは除外
+                return !hasRare;
+            });
+            
+            // コックピットを取得（自動配置用）
+            const allParts = getUnlockedCompositeParts(unlockedTrophies);
+            this.cockpitPart = allParts[0]; // 最初はコックピット
+            
+            // 制限なし - すべての通常パーツを表示
+            console.log('Available composite parts (excluding rare):', this.availableCompositeParts.length, 'parts');
+            console.log('Part names:', this.availableCompositeParts.map(p => p.name));
+            console.log('Cockpit part saved:', this.cockpitPart?.name);
             
             const centerX = this.cameras.main.width / 2;
             
@@ -307,6 +329,7 @@ export class RocketEditorScene extends Phaser.Scene {
             // フェードイン効果
             this.cameras.main.fadeIn(500, 0, 0, 0);
             
+            
             console.log('RocketEditorScene: create() completed successfully');
         } catch (error) {
             console.error('Error in RocketEditorScene.create():', error);
@@ -338,58 +361,81 @@ export class RocketEditorScene extends Phaser.Scene {
      * 組み立てエリアを作成
      */
     createBuildArea() {
-        const areaX = 150;  // 元の位置に戻す
+        this.updateBuildArea();
+    }
+    
+    /**
+     * 組み立てエリアを更新（モードに応じて）
+     */
+    updateBuildArea() {
+        // 既存の組み立てエリアを削除
+        if (this.buildAreaGraphics) {
+            this.buildAreaGraphics.destroy();
+        }
+        if (this.buildAreaBg) {
+            this.buildAreaBg.destroy();
+        }
+        if (this.buildAreaCenterLine) {
+            this.buildAreaCenterLine.destroy();
+        }
+        
+        const areaX = 150;
         const areaY = 100;
         const areaWidth = 500;
         const areaHeight = 600;
+        const gridCellSize = this.gridSize;
         
         // 背景
-        const bg = this.add.rectangle(
+        this.buildAreaBg = this.add.rectangle(
             areaX + areaWidth / 2,
             areaY + areaHeight / 2,
             areaWidth,
             areaHeight,
             0x34495e
         );
-        bg.setStrokeStyle(3, 0xffffff);
+        this.buildAreaBg.setStrokeStyle(3, 0xffffff);
         
         // グリッド線を描画
-        const gridGraphics = this.add.graphics();
-        gridGraphics.lineStyle(1, 0x7f8c8d, 0.3);
+        this.buildAreaGraphics = this.add.graphics();
+        this.buildAreaGraphics.lineStyle(1, 0x7f8c8d, 0.3);
         
-        for (let x = areaX; x <= areaX + areaWidth; x += this.gridSize) {
-            gridGraphics.lineBetween(x, areaY, x, areaY + areaHeight);
+        for (let x = areaX; x <= areaX + areaWidth; x += gridCellSize) {
+            this.buildAreaGraphics.lineBetween(x, areaY, x, areaY + areaHeight);
         }
-        for (let y = areaY; y <= areaY + areaHeight; y += this.gridSize) {
-            gridGraphics.lineBetween(areaX, y, areaX + areaWidth, y);
+        for (let y = areaY; y <= areaY + areaHeight; y += gridCellSize) {
+            this.buildAreaGraphics.lineBetween(areaX, y, areaX + areaWidth, y);
         }
-        gridGraphics.strokePath();
+        this.buildAreaGraphics.strokePath();
         
         // 組み立てエリアの境界を保存
         this.buildArea = {
             x: areaX,
             y: areaY,
             width: areaWidth,
-            height: areaHeight
+            height: areaHeight,
+            gridCellSize: gridCellSize,
+            gridCols: Math.floor(areaWidth / gridCellSize),
+            gridRows: Math.floor(areaHeight / gridCellSize)
         };
         
         // 中心線を描画（上向き基準を示す）
-        const centerLine = this.add.graphics();
-        centerLine.lineStyle(2, 0xe74c3c, 0.5);
+        this.buildAreaCenterLine = this.add.graphics();
+        this.buildAreaCenterLine.lineStyle(2, 0xe74c3c, 0.5);
         const centerX = areaX + areaWidth / 2;
-        centerLine.lineBetween(centerX, areaY, centerX, areaY + areaHeight);
-        centerLine.strokePath();
+        this.buildAreaCenterLine.lineBetween(centerX, areaY, centerX, areaY + areaHeight);
+        this.buildAreaCenterLine.strokePath();
         
         // 矢印（上向き = 発射方向）
-        centerLine.fillStyle(0xe74c3c, 0.7);
-        centerLine.fillTriangle(
+        this.buildAreaCenterLine.fillStyle(0xe74c3c, 0.7);
+        this.buildAreaCenterLine.fillTriangle(
             centerX, areaY + 30,
             centerX - 10, areaY + 50,
             centerX + 10, areaY + 50
         );
         
         // ラベル
-        this.add.text(areaX + areaWidth / 2, areaY - 25, '組み立てエリア（↑が発射方向）', {
+        const labelText = '組み立てエリア（↑が発射方向）';
+        this.add.text(areaX + areaWidth / 2, areaY - 25, labelText, {
             fontSize: '18px',
             fill: '#ffffff',
             fontStyle: 'bold'
@@ -467,24 +513,54 @@ export class RocketEditorScene extends Phaser.Scene {
         const gridCols = 6; // 6列のグリッド
         
         // パレットタイトル
-        this.add.text(startX + gridCols * cellSize / 2, startY - 20, 'パーツ選択', {
+        this.partsPaletteTitle = this.add.text(startX + gridCols * cellSize / 2, startY - 20, 'パーツ選択', {
             fontSize: '20px',
             fill: '#ffffff',
             fontStyle: 'bold'
-        }).setOrigin(0.5);
+        });
+        this.partsPaletteTitle.setOrigin(0.5);
         
-        // 各パーツをグリッドに配置
+        // パーツパレットコンテナ（表示/非表示を切り替えるため）
+        this.partsPaletteContainer = this.add.container(0, 0);
+        this.partsPaletteContainer.setScrollFactor(0);
+        this.partsPaletteContainer.setDepth(50);
+        
+        // 初期表示（通常パーツ）
+        this.updatePartsPalette();
+        
+        // パーツ詳細パネルを作成（ホバー時に表示）
+        this.createPartDetailPanel();
+    }
+    
+    /**
+     * パーツパレットを更新（表示モードに応じて）
+     */
+    updatePartsPalette() {
+        // 既存のパレットアイテムを削除
+        if (this.partsPaletteContainer) {
+            this.partsPaletteContainer.removeAll(true);
+        }
+        
+        const startX = 700;
+        const startY = 100;
+        const cellSize = 50;
+        const gridCols = 6;
+        
+        // タイトルを更新
+        if (this.partsPaletteTitle) {
+            this.partsPaletteTitle.setText('パーツ選択');
+        }
+        
+        // 通常パーツを表示
         this.availableCompositeParts.forEach((compositePart, index) => {
             const col = index % gridCols;
             const row = Math.floor(index / gridCols);
             const x = startX + col * cellSize;
             const y = startY + row * cellSize;
             
-            this.createGridPaletteItem(x, y, compositePart, cellSize);
+            const item = this.createGridPaletteItem(x, y, compositePart, cellSize);
+            this.partsPaletteContainer.add(item);
         });
-        
-        // パーツ詳細パネルを作成（ホバー時に表示）
-        this.createPartDetailPanel();
     }
     
     /**
@@ -497,13 +573,16 @@ export class RocketEditorScene extends Phaser.Scene {
         const isEven = (col + row) % 2 === 0;
         const bgColor = isEven ? 0x34495e : 0x2c3e50;
         
+        // コンテナを作成
+        const container = this.add.container(x + cellSize / 2, y + cellSize / 2);
+        
         // セル背景
-        const cell = this.add.rectangle(x + cellSize / 2, y + cellSize / 2, cellSize, cellSize, bgColor);
+        const cell = this.add.rectangle(0, 0, cellSize, cellSize, bgColor);
         cell.setStrokeStyle(2, 0x3498db);
         cell.setInteractive({ useHandCursor: true });
         
         // アイコン
-        const iconText = this.add.text(x + cellSize / 2, y + cellSize / 2, compositePart.icon, {
+        const iconText = this.add.text(0, 0, compositePart.icon, {
             fontSize: '20px',
             fill: '#3498db',
             align: 'center',
@@ -531,6 +610,346 @@ export class RocketEditorScene extends Phaser.Scene {
         // パーツ情報を保存
         cell.compositePart = compositePart;
         cell._iconText = iconText; // アイコンテキストへの参照を保存
+        
+        container.add([cell, iconText]);
+        return container;
+    }
+    
+    /**
+     * 赤パーツのパレットアイテムを作成（廃止予定）
+     */
+    createRedPartPaletteItem(x, y, redPart, name, description, cellSize) {
+        // コンテナを作成
+        const container = this.add.container(x + cellSize / 2, y + cellSize / 2);
+        
+        // 赤色の背景
+        const cell = this.add.rectangle(0, 0, cellSize, cellSize, 0x8b0000);
+        cell.setStrokeStyle(3, 0xe74c3c); // 赤い枠線
+        cell.setInteractive({ useHandCursor: true });
+        
+        // アイコン（赤色の記号）
+        const iconText = this.add.text(0, 0, '🔴', {
+            fontSize: '24px',
+            fill: '#e74c3c',
+            align: 'center'
+        });
+        iconText.setOrigin(0.5);
+        
+        // ホバー効果
+        cell.on('pointerover', () => {
+            cell.setFillStyle(0xa00000);
+            cell.setStrokeStyle(4, 0xff0000);
+            this.updateRedPartDetailPanel(redPart, name, description);
+        });
+        
+        cell.on('pointerout', () => {
+            cell.setFillStyle(0x8b0000);
+            cell.setStrokeStyle(3, 0xe74c3c);
+        });
+        
+        // クリックで選択
+        cell.on('pointerdown', () => {
+            this.addRedPartToBuildArea(redPart, name);
+        });
+        
+        // パーツ情報を保存
+        cell.redPart = redPart;
+        cell.redPartName = name;
+        cell._iconText = iconText;
+        
+        container.add([cell, iconText]);
+        return container;
+    }
+    
+    /**
+     * 赤パーツ詳細パネルを更新
+     */
+    updateRedPartDetailPanel(redPart, name, description) {
+        if (!this.detailPanel) return;
+        
+        const panelX = 700;
+        const panelY = 250;
+        const panelWidth = 300;
+        
+        // パネルを表示
+        this.detailPanel.bg.setVisible(true);
+        
+        // パーツ情報を更新
+        this.detailPanel.nameText.setText(name);
+        this.detailPanel.descText.setText(description);
+        this.detailPanel.iconText.setText('🔴');
+        
+        // パーツの詳細情報を表示
+        let infoText = '';
+        if (redPart.type === 'redengine') {
+            infoText = `質量: ${redPart.mass} | 推力: ${redPart.thrust} | 1個のみ使用可能`;
+        } else if (redPart.type === 'redbody') {
+            infoText = `質量: ${redPart.mass} | 1個のみ使用可能`;
+        } else if (redPart.type === 'rednose') {
+            infoText = `質量: ${redPart.mass} | 推力: ${redPart.thrust} | 1個のみ使用可能`;
+        }
+        
+        if (!this.detailPanel.infoText) {
+            this.detailPanel.infoText = this.add.text(panelX + 10, panelY + 120, '', {
+                fontSize: '12px',
+                fill: '#95a5a6',
+                wordWrap: { width: panelWidth - 20 }
+            });
+        }
+        this.detailPanel.infoText.setText(infoText);
+    }
+    
+    /**
+     * 赤パーツを組み立てエリアに追加
+     */
+    addRedPartToBuildArea(redPart, partName) {
+        // 1個ずつしか使用できない制限チェック
+        const existingRedPartCount = this.rocketDesign.parts.filter(p => p.type === redPart.type).length;
+        if (existingRedPartCount >= 1) {
+            this.showErrorMessage(`${partName}は1個までしか配置できません！`);
+            return;
+        }
+        
+        // 総パーツ数の制限チェック（30個まで）
+        const currentPartCount = this.rocketDesign.parts.length;
+        if (currentPartCount + 1 > 30) {
+            this.showPartLimitAlert(currentPartCount, 1);
+            return;
+        }
+        
+        // 中心位置
+        const centerX = this.buildArea.x + this.buildArea.width / 2;
+        const centerY = this.buildArea.y + this.buildArea.height / 2;
+        
+        // 赤パーツを実体化
+        const part = new (redPart.constructor)(centerX, centerY);
+        
+        // パーツのスプライトを作成
+        const partSprite = this.createSinglePartSprite(part);
+        
+        // パーツ情報を保存
+        this.placedParts.push({
+            isComposite: false,
+            parts: [part],
+            sprite: partSprite,
+            redPartName: partName,
+            partId: part.id
+        });
+        
+        // 設計データに追加
+        this.rocketDesign.addPart(part);
+        
+        // 情報を更新
+        this.updateInfoPanel();
+        
+        // パーツ配置時の効果音を再生
+        this.playPlacementSound();
+        
+        console.log('Red part added:', partName, 'Type:', part.type);
+    }
+    
+    /**
+     * 単一パーツのスプライトを作成
+     */
+    createSinglePartSprite(part) {
+        const graphics = this.add.graphics();
+        graphics.fillStyle(part.color);
+        
+        switch (part.type) {
+            case 'redengine':
+                // エンジン（円形）
+                graphics.fillCircle(part.x, part.y, part.width / 2);
+                // 噴射口を追加
+                graphics.fillStyle(0xff4500);
+                graphics.fillTriangle(
+                    part.x, part.y + part.width / 2,
+                    part.x - part.width / 4, part.y + part.width / 2 + 20,
+                    part.x + part.width / 4, part.y + part.width / 2 + 20
+                );
+                break;
+            case 'redbody':
+                // ボディ（四角形）
+                graphics.fillRect(part.x - part.width / 2, part.y - part.height / 2, part.width, part.height);
+                break;
+            case 'rednose':
+                // ノーズ（三角形）
+                graphics.fillTriangle(
+                    part.x, part.y - part.height / 2,
+                    part.x - part.width / 2, part.y + part.height / 2,
+                    part.x + part.width / 2, part.y + part.height / 2
+                );
+                // 推進力を示す矢印
+                graphics.fillStyle(0xff4500);
+                graphics.fillTriangle(
+                    part.x, part.y - part.height / 2 - 10,
+                    part.x - part.width / 4, part.y - part.height / 2,
+                    part.x + part.width / 4, part.y - part.height / 2
+                );
+                break;
+        }
+        
+        // 枠線を追加（赤色）
+        graphics.lineStyle(3, 0xe74c3c);
+        if (part.type === 'redengine') {
+            graphics.strokeCircle(part.x, part.y, part.width / 2);
+        } else if (part.type === 'redbody') {
+            graphics.strokeRect(part.x - part.width / 2, part.y - part.height / 2, part.width, part.height);
+        } else if (part.type === 'rednose') {
+            graphics.strokeTriangle(
+                part.x, part.y - part.height / 2,
+                part.x - part.width / 2, part.y + part.height / 2,
+                part.x + part.width / 2, part.y + part.height / 2
+            );
+        }
+        
+        // コンテナを作成してドラッグ可能にする
+        const container = this.add.container(part.x, part.y);
+        container.add(graphics);
+        
+        // グラフィックスをクリアして、コンテナ相対座標で再描画
+        graphics.clear();
+        graphics.x = 0;
+        graphics.y = 0;
+        
+        // コンテナ内でグラフィックスを再描画
+        graphics.fillStyle(part.color);
+        switch (part.type) {
+            case 'redengine':
+                graphics.fillCircle(0, 0, part.width / 2);
+                graphics.fillStyle(0xff4500);
+                graphics.fillTriangle(0, part.width / 2, -part.width / 4, part.width / 2 + 20, part.width / 4, part.width / 2 + 20);
+                break;
+            case 'redbody':
+                graphics.fillRect(-part.width / 2, -part.height / 2, part.width, part.height);
+                break;
+            case 'rednose':
+                graphics.fillTriangle(0, -part.height / 2, -part.width / 2, part.height / 2, part.width / 2, part.height / 2);
+                graphics.fillStyle(0xff4500);
+                graphics.fillTriangle(0, -part.height / 2 - 10, -part.width / 4, -part.height / 2, part.width / 4, -part.height / 2);
+                break;
+        }
+        
+        // 枠線を追加（赤色）
+        graphics.lineStyle(3, 0xe74c3c);
+        if (part.type === 'redengine') {
+            graphics.strokeCircle(0, 0, part.width / 2);
+        } else if (part.type === 'redbody') {
+            graphics.strokeRect(-part.width / 2, -part.height / 2, part.width, part.height);
+        } else if (part.type === 'rednose') {
+            graphics.strokeTriangle(0, -part.height / 2, -part.width / 2, part.height / 2, part.width / 2, part.height / 2);
+        }
+        
+        container.setSize(part.width, part.height);
+        container.setInteractive({ draggable: true, useHandCursor: true });
+        
+        // ドラッグイベント
+        container.on('drag', (pointer, dragX, dragY) => {
+            // グリッドにスナップ
+            const snappedX = Math.round(dragX / this.gridSize) * this.gridSize;
+            const snappedY = Math.round(dragY / this.gridSize) * this.gridSize;
+            
+            // 組み立てエリア内に制限
+            const clampedX = Phaser.Math.Clamp(
+                snappedX,
+                this.buildArea.x + part.width / 2,
+                this.buildArea.x + this.buildArea.width - part.width / 2
+            );
+            const clampedY = Phaser.Math.Clamp(
+                snappedY,
+                this.buildArea.y + part.height / 2,
+                this.buildArea.y + this.buildArea.height - part.height / 2
+            );
+            
+            container.x = clampedX;
+            container.y = clampedY;
+            
+            // パーツの位置を更新
+            part.x = clampedX;
+            part.y = clampedY;
+            
+            this.rocketDesign.updatePhysics();
+            this.updateInfoPanel();
+        });
+        
+        // 右クリックで削除
+        container.on('pointerdown', (pointer) => {
+            if (pointer.rightButtonDown()) {
+                this.removeRedPartFromBuildArea(part.id);
+            }
+        });
+        
+        // ホバー効果
+        container.on('pointerover', () => {
+            container.setAlpha(0.8);
+        });
+        
+        container.on('pointerout', () => {
+            container.setAlpha(1.0);
+        });
+        
+        return graphics;
+    }
+    
+    /**
+     * 赤パーツを組み立てエリアから削除
+     */
+    removeRedPartFromBuildArea(partId) {
+        const index = this.placedParts.findIndex(p => 
+            !p.isComposite && p.parts && p.parts[0] && p.parts[0].id === partId
+        );
+        if (index !== -1) {
+            const redPartItem = this.placedParts[index];
+            
+            // スプライトを破棄
+            if (redPartItem.sprite) {
+                redPartItem.sprite.destroy();
+            }
+            
+            // 設計データからパーツを削除
+            redPartItem.parts.forEach(part => {
+                this.rocketDesign.removePart(part.id);
+            });
+            
+            // リストから削除
+            this.placedParts.splice(index, 1);
+            
+            // 情報パネルを更新
+            this.updateInfoPanel();
+            
+            // パーツ削除時の効果音を再生
+            this.playCancelSound();
+            
+            console.log('Red part removed:', redPartItem.redPartName, 'Part ID:', partId);
+        } else {
+            // partIdで直接検索（データ構造が異なる場合）
+            const indexById = this.placedParts.findIndex(p => p.partId === partId);
+            if (indexById !== -1) {
+                const redPartItem = this.placedParts[indexById];
+                
+                // スプライトを破棄
+                if (redPartItem.sprite) {
+                    redPartItem.sprite.destroy();
+                }
+                
+                // 設計データからパーツを削除
+                if (redPartItem.parts) {
+                    redPartItem.parts.forEach(part => {
+                        this.rocketDesign.removePart(part.id);
+                    });
+                }
+                
+                // リストから削除
+                this.placedParts.splice(indexById, 1);
+                
+                // 情報パネルを更新
+                this.updateInfoPanel();
+                
+                // パーツ削除時の効果音を再生
+                this.playCancelSound();
+                
+                console.log('Red part removed by partId:', partId);
+            }
+        }
     }
     
     /**
@@ -724,6 +1143,12 @@ export class RocketEditorScene extends Phaser.Scene {
             volume: 0.2 // 音量20%
         });
         
+        // currentSoundが正しく作成されたか確認
+        if (!this.dialoguePanel.currentSound) {
+            console.error('Failed to create sound:', soundKey);
+            return;
+        }
+        
         // 音声を再生
         this.dialoguePanel.currentSound.play();
         
@@ -731,7 +1156,8 @@ export class RocketEditorScene extends Phaser.Scene {
         this.startTypewriter(text, 20);
         
         // 音声が終了したら次の会話を再生
-        this.dialoguePanel.currentSound.once('complete', () => {
+        if (this.dialoguePanel.currentSound) {
+            this.dialoguePanel.currentSound.once('complete', () => {
             // タイプライタータイマーをクリア
             if (this.dialoguePanel.typewriterTimer) {
                 this.dialoguePanel.typewriterTimer.remove();
@@ -747,15 +1173,18 @@ export class RocketEditorScene extends Phaser.Scene {
                 this.dialoguePanel.currentIndex++;
                 this.playNextDialogue();
             }
-        });
+            });
+        }
         
         // エラーハンドリング
-        this.dialoguePanel.currentSound.once('looped', () => {
+        if (this.dialoguePanel.currentSound) {
+            this.dialoguePanel.currentSound.once('looped', () => {
             // ループしないようにする
             if (this.dialoguePanel.currentSound) {
                 this.dialoguePanel.currentSound.stop();
             }
-        });
+            });
+        }
     }
     
     /**
@@ -1519,7 +1948,7 @@ export class RocketEditorScene extends Phaser.Scene {
         const centerX = this.cameras.main.width / 2;
         
         // クリアボタン（コックピット以外を削除）
-        this.createButton(centerX - 300, 750, '🗑️ クリア', () => {
+        this.createButton(centerX - 400, 750, '🗑️ クリア', () => {
             // コックピット以外のパーツを削除
             const partsToRemove = this.placedParts.filter(p => p.compositeName !== 'コックピット');
             partsToRemove.forEach(p => {
@@ -1540,7 +1969,7 @@ export class RocketEditorScene extends Phaser.Scene {
         }, 0xc0392b);
         
         // テスト発射ボタン
-        this.createButton(centerX - 100, 750, '🚀 テスト発射', () => {
+        this.createButton(centerX - 200, 750, '🚀 テスト発射', () => {
             if (this.rocketDesign.parts.length === 0) {
                 alert('パーツを配置してください！');
                 return;
@@ -1564,10 +1993,22 @@ export class RocketEditorScene extends Phaser.Scene {
         }, 0x27ae60);
         
         // タイトルに戻る
-        this.createButton(centerX + 100, 750, '◀ 戻る', () => {
+        this.createButton(centerX, 750, '◀ 戻る', () => {
             // トランジション効果を追加してシーン遷移（動画も含めてフェードアウト）
             this.transitionToTitleScene();
         }, 0x7f8c8d);
+        
+        // オンラインアップロードボタン
+        this.createButton(centerX + 200, 750, '☁️ アップロード', () => {
+            this.playButtonSound();
+            this.showUploadDialog();
+        }, 0x9b59b6);
+        
+        // お気に入りボタン
+        this.createButton(centerX + 400, 750, '⭐ お気に入り', () => {
+            this.playButtonSound();
+            this.showFavoritesMenu();
+        }, 0xf39c12);
     }
     
     /**
@@ -1674,6 +2115,1146 @@ export class RocketEditorScene extends Phaser.Scene {
         // フェードアウト完了後にシーン遷移
         this.cameras.main.once('camerafadeoutcomplete', () => {
             this.scene.start('TitleScene');
+        });
+    }
+    
+    /**
+     * お気に入りメニューを表示
+     */
+    showFavoritesMenu() {
+        const screenWidth = this.cameras.main.width;
+        const screenHeight = this.cameras.main.height;
+        const centerX = screenWidth / 2;
+        const centerY = screenHeight / 2;
+        
+        // 既に表示されている場合は何もしない
+        if (this.favoritesOverlay) {
+            return;
+        }
+        
+        // 動画を非表示にする
+        if (this.videoElement) {
+            this.videoElement.style.transition = 'opacity 300ms ease-out';
+            this.videoElement.style.opacity = '0';
+            this.videoElement.style.visibility = 'hidden';
+        }
+        
+        // お気に入りデータを取得（非同期）
+        this.loadFavorites().then(favorites => {
+            this.showFavoritesMenuWithData(favorites, centerX, centerY, screenWidth, screenHeight);
+        });
+    }
+    
+    /**
+     * お気に入りメニューを表示（データ取得後）
+     */
+    showFavoritesMenuWithData(favorites, centerX, centerY, screenWidth, screenHeight) {
+        
+        // オーバーレイ背景（半透明の黒）
+        const overlayBg = this.add.rectangle(
+            centerX,
+            centerY,
+            screenWidth,
+            screenHeight,
+            0x000000,
+            0.8
+        );
+        overlayBg.setInteractive();
+        overlayBg.setDepth(2000);
+        
+        // メニューパネル
+        const panelWidth = 800;
+        const panelHeight = 600;
+        const menuPanel = this.add.container(centerX, centerY);
+        menuPanel.setDepth(2001);
+        
+        // パネル背景
+        const panelBg = this.add.rectangle(0, 0, panelWidth, panelHeight, 0x2c3e50);
+        panelBg.setStrokeStyle(3, 0xffffff);
+        
+        // タイトル
+        const titleText = this.add.text(0, -250, 'お気に入り', {
+            fontSize: '48px',
+            fill: '#ffffff',
+            fontStyle: 'bold'
+        });
+        titleText.setOrigin(0.5);
+        
+        // お気に入り一覧
+        const favoritesList = this.add.container(0, -50);
+        
+        if (favorites.length === 0) {
+            const emptyText = this.add.text(0, 0, 'お気に入りがありません\n\n下部の「💾 保存」ボタンから\n現在のロケット構成を保存できます', {
+                fontSize: '24px',
+                fill: '#ffffff',
+                align: 'center',
+                wordWrap: { width: panelWidth - 100 }
+            });
+            emptyText.setOrigin(0.5);
+            favoritesList.add(emptyText);
+        } else {
+            // 各お気に入り項目をボタンとして表示
+            const itemButtons = [];
+            favorites.forEach((fav, index) => {
+                const date = new Date(fav.date || fav.createdAt || Date.now());
+                const dateStr = `${date.getMonth() + 1}/${date.getDate()} ${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`;
+                const yPos = -150 + (index * 70);
+                
+                // お気に入り項目コンテナ
+                const itemContainer = this.add.container(0, yPos);
+                
+                // 項目ボタン（読み込み用）
+                const itemButton = this.add.container(-100, 0);
+                const itemBg = this.add.rectangle(0, 0, 500, 50, 0x3498db);
+                itemBg.setStrokeStyle(2, 0xffffff);
+                const itemText = this.add.text(0, 0, `${index + 1}. ${fav.name || '無題'} (${dateStr})`, {
+                    fontSize: '20px',
+                    fill: '#ffffff',
+                    fontStyle: 'bold'
+                });
+                itemText.setOrigin(0.5);
+                itemButton.add([itemBg, itemText]);
+                itemButton.setSize(500, 50);
+                itemButton.setInteractive({ useHandCursor: true });
+                itemButton.on('pointerover', () => {
+                    itemBg.setFillStyle(0x2980b9);
+                });
+                itemButton.on('pointerout', () => {
+                    itemBg.setFillStyle(0x3498db);
+                });
+                itemButton.on('pointerdown', () => {
+                    this.playButtonSound();
+                    this.loadFavorite(fav.favoriteId || fav.id);
+                });
+                
+                // 削除ボタン
+                const deleteButton = this.add.container(250, 0);
+                const deleteBg = this.add.rectangle(0, 0, 80, 50, 0xe74c3c);
+                deleteBg.setStrokeStyle(2, 0xffffff);
+                const deleteText = this.add.text(0, 0, '🗑️', {
+                    fontSize: '24px',
+                    fill: '#ffffff',
+                    fontStyle: 'bold'
+                });
+                deleteText.setOrigin(0.5);
+                deleteButton.add([deleteBg, deleteText]);
+                deleteButton.setSize(80, 50);
+                deleteButton.setInteractive({ useHandCursor: true });
+                deleteButton.on('pointerover', () => {
+                    deleteBg.setFillStyle(0xc0392b);
+                });
+                deleteButton.on('pointerout', () => {
+                    deleteBg.setFillStyle(0xe74c3c);
+                });
+                deleteButton.on('pointerdown', () => {
+                    this.playButtonSound();
+                    this.showDeleteConfirmDialog(fav.favoriteId || fav.id, fav.name || '無題');
+                });
+                
+                itemContainer.add([itemButton, deleteButton]);
+                itemButtons.push(itemContainer);
+            });
+            
+            favoritesList.add(itemButtons);
+        }
+        
+        // ボタンコンテナ
+        const buttonsContainer = this.add.container(0, 200);
+        
+        // 保存ボタン
+        const saveButton = this.add.container(-200, 0);
+        const saveBg = this.add.rectangle(0, 0, 200, 60, 0x27ae60);
+        saveBg.setStrokeStyle(2, 0xffffff);
+        const saveText = this.add.text(0, 0, '💾 保存', {
+            fontSize: '28px',
+            fill: '#ffffff',
+            fontStyle: 'bold'
+        });
+        saveText.setOrigin(0.5);
+        saveButton.add([saveBg, saveText]);
+        saveButton.setSize(200, 60);
+        saveButton.setInteractive({ useHandCursor: true });
+        saveButton.on('pointerover', () => {
+            saveBg.setFillStyle(0x229954);
+        });
+        saveButton.on('pointerout', () => {
+            saveBg.setFillStyle(0x27ae60);
+        });
+        saveButton.on('pointerdown', () => {
+            this.playButtonSound();
+            this.showSaveFavoriteDialog();
+        });
+        
+        // 閉じるボタン
+        const closeButton = this.add.container(200, 0);
+        const closeBg = this.add.rectangle(0, 0, 200, 60, 0x7f8c8d);
+        closeBg.setStrokeStyle(2, 0xffffff);
+        const closeText = this.add.text(0, 0, '閉じる', {
+            fontSize: '28px',
+            fill: '#ffffff',
+            fontStyle: 'bold'
+        });
+        closeText.setOrigin(0.5);
+        closeButton.add([closeBg, closeText]);
+        closeButton.setSize(200, 60);
+        closeButton.setInteractive({ useHandCursor: true });
+        closeButton.on('pointerover', () => {
+            closeBg.setFillStyle(0x6c7a7d);
+        });
+        closeButton.on('pointerout', () => {
+            closeBg.setFillStyle(0x7f8c8d);
+        });
+        closeButton.on('pointerdown', () => {
+            this.playButtonSound();
+            this.closeFavoritesMenu();
+        });
+        
+        // オーバーレイ背景のクリックでも閉じる
+        overlayBg.on('pointerdown', () => {
+            this.closeFavoritesMenu();
+        });
+        
+        const buttons = [saveButton, closeButton];
+        buttonsContainer.add(buttons);
+        
+        menuPanel.add([panelBg, titleText, favoritesList, buttonsContainer]);
+        
+        // 参照を保存
+        this.favoritesOverlay = {
+            overlayBg: overlayBg,
+            menuPanel: menuPanel
+        };
+    }
+    
+    /**
+     * お気に入りメニューを閉じる
+     */
+    closeFavoritesMenu() {
+        if (!this.favoritesOverlay) {
+            return;
+        }
+        
+        this.favoritesOverlay.menuPanel.destroy();
+        this.favoritesOverlay.overlayBg.destroy();
+        this.favoritesOverlay = null;
+        
+        // 動画を復活させる
+        if (this.videoElement) {
+            this.videoElement.style.transition = 'opacity 300ms ease-in';
+            this.videoElement.style.visibility = 'visible';
+            this.videoElement.style.opacity = '1';
+        }
+    }
+    
+    /**
+     * お気に入り保存ダイアログを表示
+     */
+    showSaveFavoriteDialog() {
+        const screenWidth = this.cameras.main.width;
+        const screenHeight = this.cameras.main.height;
+        const centerX = screenWidth / 2;
+        const centerY = screenHeight / 2;
+        
+        // 既に表示されている場合は何もしない
+        if (this.saveFavoriteDialog) {
+            return;
+        }
+        
+        // パーツが配置されていない場合は警告
+        if (this.rocketDesign.parts.length === 0) {
+            this.showErrorMessage('パーツを配置してから保存してください！');
+            return;
+        }
+        
+        // オーバーレイ背景（パネル外のクリックを無効化）
+        const overlayBg = this.add.rectangle(
+            centerX,
+            centerY,
+            screenWidth,
+            screenHeight,
+            0x000000,
+            0.5
+        );
+        overlayBg.setInteractive();
+        overlayBg.setDepth(2099);
+        // オーバーレイ背景のクリックは何もしない（パネル外の操作を無効化）
+        overlayBg.on('pointerdown', () => {
+            // 何もしない（パネル外のクリックを無効化）
+        });
+        
+        // ダイアログパネル
+        const dialogWidth = 600;
+        const dialogHeight = 300;
+        const dialogPanel = this.add.container(centerX, centerY);
+        dialogPanel.setDepth(2100);
+        
+        // パネル背景
+        const dialogBg = this.add.rectangle(0, 0, dialogWidth, dialogHeight, 0x34495e);
+        dialogBg.setStrokeStyle(3, 0xffffff);
+        
+        // タイトル
+        const titleText = this.add.text(0, -100, 'お気に入りに保存', {
+            fontSize: '36px',
+            fill: '#ffffff',
+            fontStyle: 'bold'
+        });
+        titleText.setOrigin(0.5);
+        
+        // 説明文
+        const instructionText = this.add.text(0, -20, '名前を入力してください（最大20文字）', {
+            fontSize: '20px',
+            fill: '#ffffff'
+        });
+        instructionText.setOrigin(0.5);
+        
+        // HTMLのinput要素を作成
+        const gameContainer = document.getElementById('game-container');
+        if (gameContainer) {
+            const canvasRect = this.game.canvas.getBoundingClientRect();
+            const containerRect = gameContainer.getBoundingClientRect();
+            
+            const scaleX = this.game.scale.displaySize.width / this.game.scale.gameSize.width;
+            const scaleY = this.game.scale.displaySize.height / this.game.scale.gameSize.height;
+            const canvasOffsetX = canvasRect.left - containerRect.left;
+            const canvasOffsetY = canvasRect.top - containerRect.top;
+            
+            const inputX = canvasOffsetX + (centerX - 200) * scaleX;
+            const inputY = canvasOffsetY + (centerY + 30) * scaleY;
+            
+            const nameInput = document.createElement('input');
+            nameInput.type = 'text';
+            nameInput.maxLength = 20;
+            nameInput.style.position = 'absolute';
+            nameInput.style.left = inputX + 'px';
+            nameInput.style.top = inputY + 'px';
+            nameInput.style.width = (400 * scaleX) + 'px';
+            nameInput.style.height = (40 * scaleY) + 'px';
+            nameInput.style.fontSize = (20 * scaleX) + 'px';
+            nameInput.style.textAlign = 'center';
+            nameInput.style.border = '3px solid #ffffff';
+            nameInput.style.borderRadius = '5px';
+            nameInput.style.backgroundColor = '#1a1a2e';
+            nameInput.style.color = '#ffffff';
+            nameInput.style.zIndex = '2101';
+            nameInput.placeholder = 'お気に入り名';
+            
+            gameContainer.appendChild(nameInput);
+            nameInput.focus();
+            
+            // 保存ボタン（左側）
+            const saveButton = this.add.container(-120, 100);
+            const saveBg = this.add.rectangle(0, 0, 200, 50, 0x27ae60);
+            saveBg.setStrokeStyle(2, 0xffffff);
+            const saveText = this.add.text(0, 0, '保存', {
+                fontSize: '24px',
+                fill: '#ffffff',
+                fontStyle: 'bold'
+            });
+            saveText.setOrigin(0.5);
+            saveButton.add([saveBg, saveText]);
+            saveButton.setSize(200, 50);
+            saveButton.setInteractive({ useHandCursor: true });
+            saveButton.on('pointerover', () => {
+                saveBg.setFillStyle(0x229954);
+            });
+            saveButton.on('pointerout', () => {
+                saveBg.setFillStyle(0x27ae60);
+            });
+            saveButton.on('pointerdown', () => {
+                this.playButtonSound();
+                const name = nameInput.value.trim() || '無題';
+                this.saveFavorite(name);
+                if (nameInput.parentNode) {
+                    nameInput.parentNode.removeChild(nameInput);
+                }
+                if (overlayBg) {
+                    overlayBg.destroy();
+                }
+                dialogPanel.destroy();
+                this.saveFavoriteDialog = null;
+                this.closeFavoritesMenu();
+                this.showFavoritesMenu(); // 更新された一覧を表示
+            });
+            
+            // キャンセルボタン（右側）
+            const cancelButton = this.add.container(120, 100);
+            const cancelBg = this.add.rectangle(0, 0, 200, 50, 0x7f8c8d);
+            cancelBg.setStrokeStyle(2, 0xffffff);
+            const cancelText = this.add.text(0, 0, 'キャンセル', {
+                fontSize: '24px',
+                fill: '#ffffff',
+                fontStyle: 'bold'
+            });
+            cancelText.setOrigin(0.5);
+            cancelButton.add([cancelBg, cancelText]);
+            cancelButton.setSize(200, 50);
+            cancelButton.setInteractive({ useHandCursor: true });
+            cancelButton.on('pointerover', () => {
+                cancelBg.setFillStyle(0x6c7a7d);
+            });
+            cancelButton.on('pointerout', () => {
+                cancelBg.setFillStyle(0x7f8c8d);
+            });
+            cancelButton.on('pointerdown', () => {
+                this.playButtonSound();
+                if (nameInput.parentNode) {
+                    nameInput.parentNode.removeChild(nameInput);
+                }
+                if (overlayBg) {
+                    overlayBg.destroy();
+                }
+                dialogPanel.destroy();
+                this.saveFavoriteDialog = null;
+            });
+            
+            // Enterキーで保存
+            nameInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    this.playButtonSound();
+                    const name = nameInput.value.trim() || '無題';
+                    this.saveFavorite(name);
+                    if (nameInput.parentNode) {
+                        nameInput.parentNode.removeChild(nameInput);
+                    }
+                    if (overlayBg) {
+                        overlayBg.destroy();
+                    }
+                    dialogPanel.destroy();
+                    this.saveFavoriteDialog = null;
+                    this.closeFavoritesMenu();
+                    this.showFavoritesMenu(); // 更新された一覧を表示
+                }
+            });
+            
+            dialogPanel.add([dialogBg, titleText, instructionText, saveButton, cancelButton]);
+            
+            // 参照を保存
+            this.saveFavoriteDialog = {
+                overlayBg: overlayBg,
+                dialogPanel: dialogPanel,
+                nameInput: nameInput
+            };
+        }
+    }
+    
+    /**
+     * お気に入りを保存
+     */
+    async saveFavorite(name) {
+        try {
+            const { getApiClient } = await import('../utils/apiClient.js');
+            const apiClient = getApiClient();
+            const authToken = localStorage.getItem('authToken');
+            
+            // 配置されたパーツの位置情報を保存
+            const placedPartsData = this.placedParts.map(p => ({
+                isComposite: p.isComposite,
+                groupId: p.groupId,
+                compositeName: p.compositeName,
+                x: p.sprite ? p.sprite.x : 0,
+                y: p.sprite ? p.sprite.y : 0,
+                parts: p.parts ? p.parts.map(part => ({
+                    id: part.id,
+                    type: part.type,
+                    x: part.x,
+                    y: part.y,
+                    width: part.width,
+                    height: part.height,
+                    color: part.color,
+                    mass: part.mass
+                })) : []
+            }));
+            
+            // 現在のロケット設計を保存
+            const favoriteData = {
+                name: name,
+                design: this.rocketDesign.toJSON(),
+                placedParts: placedPartsData
+            };
+            
+            if (authToken) {
+                // APIに保存
+                try {
+                    await apiClient.saveFavorite(authToken, favoriteData);
+                    console.log('Favorite saved to API:', name);
+                } catch (apiError) {
+                    console.error('Error saving favorite to API:', apiError);
+                    // APIエラー時はローカルストレージに保存
+                    this.saveFavoriteLocal(name, favoriteData);
+                }
+            } else {
+                // トークンがない場合はローカルストレージに保存
+                this.saveFavoriteLocal(name, favoriteData);
+            }
+            
+            this.showSuccessMessage(`「${name}」をお気に入りに保存しました！`);
+        } catch (error) {
+            console.error('Error saving favorite:', error);
+            this.showErrorMessage('お気に入りの保存に失敗しました。');
+        }
+    }
+    
+    /**
+     * お気に入りをローカルストレージに保存（フォールバック用）
+     */
+    saveFavoriteLocal(name, favoriteData) {
+        const favorites = JSON.parse(localStorage.getItem('rocketFavorites') || '[]');
+        const favorite = {
+            id: Date.now().toString(),
+            ...favoriteData,
+            date: new Date().toISOString()
+        };
+        
+        favorites.push(favorite);
+        
+        // 最大10件まで保存
+        if (favorites.length > 10) {
+            favorites.shift(); // 古いものから削除
+        }
+        
+        localStorage.setItem('rocketFavorites', JSON.stringify(favorites));
+        console.log('Favorite saved to local:', name);
+    }
+    
+    /**
+     * お気に入りを読み込み
+     */
+    async loadFavorite(favoriteId) {
+        try {
+            const favorites = await this.loadFavorites();
+            const favorite = favorites.find(f => (f.favoriteId || f.id) === favoriteId);
+            
+            if (!favorite) {
+                this.showErrorMessage('お気に入りが見つかりませんでした。');
+                return;
+            }
+            
+            // 現在のパーツをすべて削除（コックピットも含めて）
+            this.placedParts.forEach(p => {
+                if (p.sprite) {
+                    p.sprite.destroy();
+                }
+                // 設計データからも削除
+                if (p.parts) {
+                    p.parts.forEach(part => {
+                        this.rocketDesign.removePart(part.id);
+                    });
+                }
+            });
+            this.placedParts = [];
+            this.rocketDesign = new RocketDesign();
+            
+            // 情報パネルを更新
+            this.updateInfoPanel();
+            
+            // お気に入りからロケット設計を復元
+            this.rocketDesign = RocketDesign.fromJSON(favorite.design);
+            
+            // 配置されたパーツを復元（表示用の位置情報のみ）
+            // 注意: 設計データは既にRocketDesign.fromJSON()で復元されているため、
+            // パーツを再度追加する必要はありません。ここでは表示用のスプライトのみを作成します。
+            if (favorite.placedParts && favorite.placedParts.length > 0) {
+                favorite.placedParts.forEach(placedPartData => {
+                    // 設計データから対応するパーツを取得（IDでマッチング）
+                    const designParts = placedPartData.parts.map(partData => {
+                        return this.rocketDesign.parts.find(p => p.id === partData.id);
+                    }).filter(p => p !== null && p !== undefined);
+                    
+                    if (designParts.length === 0) {
+                        console.warn('No matching parts found in design for placedPart:', placedPartData.compositeName);
+                        return;
+                    }
+                    
+                    // グループコンテナを作成
+                    const groupContainer = this.createCompositePartSprite(
+                        designParts,
+                        placedPartData.groupId,
+                        placedPartData.compositeName
+                    );
+                    
+                    // 位置を復元
+                    groupContainer.x = placedPartData.x;
+                    groupContainer.y = placedPartData.y;
+                    
+                    // グループ情報を保存
+                    this.placedParts.push({
+                        isComposite: placedPartData.isComposite,
+                        groupId: placedPartData.groupId,
+                        parts: designParts,
+                        sprite: groupContainer,
+                        compositeName: placedPartData.compositeName
+                    });
+                });
+            }
+            
+            // コックピットが復元されていない場合は、初期コックピットを配置
+            const hasCockpit = this.rocketDesign.parts.some(p => p.type === 'cockpit');
+            if (!hasCockpit) {
+                this.placeInitialCockpit();
+            }
+            
+            // 情報を更新
+            this.updateInfoPanel();
+            
+            this.closeFavoritesMenu();
+            this.showSuccessMessage(`「${favorite.name}」を読み込みました！`);
+        } catch (error) {
+            console.error('Error loading favorite:', error);
+            this.showErrorMessage('お気に入りの読み込みに失敗しました。');
+        }
+    }
+    
+    /**
+     * パーツタイプからパーツクラスを取得
+     */
+    getPartClass(type) {
+        switch (type) {
+            case 'nose':
+                return NosePart;
+            case 'body':
+                return BodyPart;
+            case 'wing':
+                return WingPart;
+            case 'engine':
+                return EnginePart;
+            case 'fuelTank':
+                return FuelTankPart;
+            case 'cockpit':
+                return CockpitPart;
+            default:
+                return null;
+        }
+    }
+    
+    /**
+     * オンラインアップロードダイアログを表示
+     */
+    showUploadDialog() {
+        const screenWidth = this.cameras.main.width;
+        const screenHeight = this.cameras.main.height;
+        const centerX = screenWidth / 2;
+        const centerY = screenHeight / 2;
+        
+        // 既に表示されている場合は何もしない
+        if (this.uploadDialog) {
+            return;
+        }
+        
+        // パーツが配置されていない場合は警告
+        if (this.rocketDesign.parts.length === 0) {
+            this.showErrorMessage('パーツを配置してからアップロードしてください！');
+            return;
+        }
+        
+        // 動画を非表示にする
+        if (this.videoElement) {
+            this.videoElement.style.transition = 'opacity 300ms ease-out';
+            this.videoElement.style.opacity = '0';
+            this.videoElement.style.visibility = 'hidden';
+        }
+        
+        // オーバーレイ背景
+        const overlayBg = this.add.rectangle(
+            centerX,
+            centerY,
+            screenWidth,
+            screenHeight,
+            0x000000,
+            0.5
+        );
+        overlayBg.setInteractive();
+        overlayBg.setDepth(2099);
+        overlayBg.on('pointerdown', () => {
+            // 何もしない（パネル外のクリックを無効化）
+        });
+        
+        // ダイアログパネル
+        const dialogWidth = 600;
+        const dialogHeight = 350;
+        const dialogPanel = this.add.container(centerX, centerY);
+        dialogPanel.setDepth(2100);
+        
+        // パネル背景
+        const dialogBg = this.add.rectangle(0, 0, dialogWidth, dialogHeight, 0x34495e);
+        dialogBg.setStrokeStyle(3, 0xffffff);
+        
+        // タイトル
+        const titleText = this.add.text(0, -120, 'オンラインにアップロード', {
+            fontSize: '36px',
+            fill: '#ffffff',
+            fontStyle: 'bold'
+        });
+        titleText.setOrigin(0.5);
+        
+        // 説明文
+        const instructionText = this.add.text(0, -40, 'ロケット設計をオンラインにアップロードします', {
+            fontSize: '20px',
+            fill: '#ffffff',
+            align: 'center',
+            wordWrap: { width: dialogWidth - 40 }
+        });
+        instructionText.setOrigin(0.5);
+        
+        // アップロードボタン（左側）
+        const uploadButton = this.add.container(-120, 80);
+        const uploadBg = this.add.rectangle(0, 0, 200, 50, 0x9b59b6);
+        uploadBg.setStrokeStyle(2, 0xffffff);
+        const uploadText = this.add.text(0, 0, 'アップロード', {
+            fontSize: '24px',
+            fill: '#ffffff',
+            fontStyle: 'bold'
+        });
+        uploadText.setOrigin(0.5);
+        uploadButton.add([uploadBg, uploadText]);
+        uploadButton.setSize(200, 50);
+        uploadButton.setInteractive({ useHandCursor: true });
+        uploadButton.on('pointerover', () => {
+            uploadBg.setFillStyle(0x8e44ad);
+        });
+        uploadButton.on('pointerout', () => {
+            uploadBg.setFillStyle(0x9b59b6);
+        });
+        uploadButton.on('pointerdown', () => {
+            this.playButtonSound();
+            this.uploadToOnline();
+            if (overlayBg) {
+                overlayBg.destroy();
+            }
+            dialogPanel.destroy();
+            this.uploadDialog = null;
+            
+            // 動画を復活させる
+            if (this.videoElement) {
+                this.videoElement.style.transition = 'opacity 300ms ease-in';
+                this.videoElement.style.visibility = 'visible';
+                this.videoElement.style.opacity = '1';
+            }
+        });
+        
+        // キャンセルボタン（右側）
+        const cancelButton = this.add.container(120, 80);
+        const cancelBg = this.add.rectangle(0, 0, 200, 50, 0x7f8c8d);
+        cancelBg.setStrokeStyle(2, 0xffffff);
+        const cancelText = this.add.text(0, 0, 'キャンセル', {
+            fontSize: '24px',
+            fill: '#ffffff',
+            fontStyle: 'bold'
+        });
+        cancelText.setOrigin(0.5);
+        cancelButton.add([cancelBg, cancelText]);
+        cancelButton.setSize(200, 50);
+        cancelButton.setInteractive({ useHandCursor: true });
+        cancelButton.on('pointerover', () => {
+            cancelBg.setFillStyle(0x6c7a7d);
+        });
+        cancelButton.on('pointerout', () => {
+            cancelBg.setFillStyle(0x7f8c8d);
+        });
+        cancelButton.on('pointerdown', () => {
+            this.playButtonSound();
+            if (overlayBg) {
+                overlayBg.destroy();
+            }
+            dialogPanel.destroy();
+            this.uploadDialog = null;
+            
+            // 動画を復活させる
+            if (this.videoElement) {
+                this.videoElement.style.transition = 'opacity 300ms ease-in';
+                this.videoElement.style.visibility = 'visible';
+                this.videoElement.style.opacity = '1';
+            }
+        });
+        
+        dialogPanel.add([dialogBg, titleText, instructionText, uploadButton, cancelButton]);
+        
+        // 参照を保存
+        this.uploadDialog = {
+            overlayBg: overlayBg,
+            dialogPanel: dialogPanel
+        };
+    }
+    
+    /**
+     * オンラインにアップロード
+     */
+    uploadToOnline() {
+        try {
+            // 現在のロケット設計データを取得
+            const designData = this.rocketDesign.toJSON();
+            
+            // TODO: 実際のアップロード処理を実装
+            // 例: fetch APIを使用してサーバーにPOSTリクエストを送信
+            // fetch('https://api.example.com/rockets', {
+            //     method: 'POST',
+            //     headers: {
+            //         'Content-Type': 'application/json',
+            //     },
+            //     body: JSON.stringify(designData)
+            // })
+            // .then(response => response.json())
+            // .then(data => {
+            //     this.showSuccessMessage('アップロードが完了しました！');
+            // })
+            // .catch(error => {
+            //     this.showErrorMessage('アップロードに失敗しました。');
+            // });
+            
+            // 暫定的に成功メッセージを表示
+            console.log('Uploading design:', designData);
+            this.showSuccessMessage('アップロード機能は準備中です。');
+        } catch (error) {
+            console.error('Error uploading:', error);
+            this.showErrorMessage('アップロードに失敗しました。');
+        }
+    }
+    
+    /**
+     * お気に入り読み込みダイアログを表示（削除予定）
+     */
+    showLoadFavoriteDialog(favorites) {
+        const screenWidth = this.cameras.main.width;
+        const screenHeight = this.cameras.main.height;
+        const centerX = screenWidth / 2;
+        const centerY = screenHeight / 2;
+        
+        // 既に表示されている場合は何もしない
+        if (this.loadFavoriteDialog) {
+            return;
+        }
+        
+        // ダイアログパネル
+        const dialogWidth = 700;
+        const dialogHeight = 500;
+        const dialogPanel = this.add.container(centerX, centerY);
+        dialogPanel.setDepth(2100);
+        
+        // パネル背景
+        const dialogBg = this.add.rectangle(0, 0, dialogWidth, dialogHeight, 0x34495e);
+        dialogBg.setStrokeStyle(3, 0xffffff);
+        
+        // タイトル
+        const titleText = this.add.text(0, -200, 'お気に入りから読み込み', {
+            fontSize: '36px',
+            fill: '#ffffff',
+            fontStyle: 'bold'
+        });
+        titleText.setOrigin(0.5);
+        
+        // お気に入り一覧
+        const listContainer = this.add.container(0, 0);
+        const buttons = [];
+        
+        favorites.forEach((fav, index) => {
+            const date = new Date(fav.date);
+            const dateStr = `${date.getMonth() + 1}/${date.getDate()} ${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`;
+            const yPos = -100 + (index * 60);
+            
+            const favButton = this.add.container(0, yPos);
+            const favBg = this.add.rectangle(0, 0, 600, 50, 0x3498db);
+            favBg.setStrokeStyle(2, 0xffffff);
+            const favText = this.add.text(0, 0, `${fav.name || '無題'} (${dateStr})`, {
+                fontSize: '24px',
+                fill: '#ffffff',
+                fontStyle: 'bold'
+            });
+            favText.setOrigin(0.5);
+            favButton.add([favBg, favText]);
+            favButton.setSize(600, 50);
+            favButton.setInteractive({ useHandCursor: true });
+            favButton.on('pointerover', () => {
+                favBg.setFillStyle(0x2980b9);
+            });
+            favButton.on('pointerout', () => {
+                favBg.setFillStyle(0x3498db);
+            });
+            favButton.on('pointerdown', () => {
+                this.playButtonSound();
+                this.loadFavorite(fav.id);
+                dialogPanel.destroy();
+                this.loadFavoriteDialog = null;
+            });
+            
+            buttons.push(favButton);
+        });
+        
+        listContainer.add(buttons);
+        
+        // キャンセルボタン
+        const cancelButton = this.add.container(0, 200);
+        const cancelBg = this.add.rectangle(0, 0, 200, 50, 0x7f8c8d);
+        cancelBg.setStrokeStyle(2, 0xffffff);
+        const cancelText = this.add.text(0, 0, 'キャンセル', {
+            fontSize: '24px',
+            fill: '#ffffff',
+            fontStyle: 'bold'
+        });
+        cancelText.setOrigin(0.5);
+        cancelButton.add([cancelBg, cancelText]);
+        cancelButton.setSize(200, 50);
+        cancelButton.setInteractive({ useHandCursor: true });
+        cancelButton.on('pointerover', () => {
+            cancelBg.setFillStyle(0x6c7a7d);
+        });
+        cancelButton.on('pointerout', () => {
+            cancelBg.setFillStyle(0x7f8c8d);
+        });
+        cancelButton.on('pointerdown', () => {
+            this.playButtonSound();
+            dialogPanel.destroy();
+            this.loadFavoriteDialog = null;
+        });
+        
+        dialogPanel.add([dialogBg, titleText, listContainer, cancelButton]);
+        
+        // 参照を保存
+        this.loadFavoriteDialog = {
+            dialogPanel: dialogPanel
+        };
+    }
+    
+    /**
+     * お気に入りを読み込む
+     */
+    async loadFavorites() {
+        try {
+            const { getApiClient } = await import('../utils/apiClient.js');
+            const apiClient = getApiClient();
+            const authToken = localStorage.getItem('authToken');
+            
+            if (!authToken) {
+                // トークンがない場合はローカルストレージから取得
+                const saved = localStorage.getItem('rocketFavorites');
+                return saved ? JSON.parse(saved) : [];
+            }
+            
+            // APIからお気に入り一覧を取得
+            const response = await apiClient.getFavorites(authToken);
+            const favorites = response.data || [];
+            
+            // ローカルストレージにも保存（オフライン対応）
+            localStorage.setItem('rocketFavorites', JSON.stringify(favorites));
+            
+            return favorites;
+        } catch (error) {
+            console.error('Error loading favorites from API:', error);
+            // エラー時はローカルストレージから取得
+            const saved = localStorage.getItem('rocketFavorites');
+            return saved ? JSON.parse(saved) : [];
+        }
+    }
+    
+    /**
+     * お気に入り削除確認ダイアログを表示
+     */
+    showDeleteConfirmDialog(favoriteId, favoriteName) {
+        const screenWidth = this.cameras.main.width;
+        const screenHeight = this.cameras.main.height;
+        const centerX = screenWidth / 2;
+        const centerY = screenHeight / 2;
+        
+        // 既に表示されている場合は何もしない
+        if (this.deleteConfirmDialog) {
+            return;
+        }
+        
+        // ダイアログパネル
+        const dialogWidth = 500;
+        const dialogHeight = 250;
+        const dialogPanel = this.add.container(centerX, centerY);
+        dialogPanel.setDepth(2200);
+        
+        // パネル背景
+        const dialogBg = this.add.rectangle(0, 0, dialogWidth, dialogHeight, 0x34495e);
+        dialogBg.setStrokeStyle(3, 0xffffff);
+        
+        // メッセージ
+        const messageText = this.add.text(0, -50, `「${favoriteName}」を削除しますか？`, {
+            fontSize: '28px',
+            fill: '#ffffff',
+            fontStyle: 'bold',
+            align: 'center',
+            wordWrap: { width: dialogWidth - 40 }
+        });
+        messageText.setOrigin(0.5);
+        
+        // 削除ボタン
+        const deleteButton = this.add.container(-100, 50);
+        const deleteBg = this.add.rectangle(0, 0, 150, 50, 0xe74c3c);
+        deleteBg.setStrokeStyle(2, 0xffffff);
+        const deleteText = this.add.text(0, 0, '削除', {
+            fontSize: '24px',
+            fill: '#ffffff',
+            fontStyle: 'bold'
+        });
+        deleteText.setOrigin(0.5);
+        deleteButton.add([deleteBg, deleteText]);
+        deleteButton.setSize(150, 50);
+        deleteButton.setInteractive({ useHandCursor: true });
+        deleteButton.on('pointerover', () => {
+            deleteBg.setFillStyle(0xc0392b);
+        });
+        deleteButton.on('pointerout', () => {
+            deleteBg.setFillStyle(0xe74c3c);
+        });
+        deleteButton.on('pointerdown', () => {
+            this.playButtonSound();
+            this.deleteFavorite(favoriteId);
+            dialogPanel.destroy();
+            this.deleteConfirmDialog = null;
+            // お気に入りメニューを更新
+            this.closeFavoritesMenu();
+            this.showFavoritesMenu();
+        });
+        
+        // キャンセルボタン
+        const cancelButton = this.add.container(100, 50);
+        const cancelBg = this.add.rectangle(0, 0, 150, 50, 0x7f8c8d);
+        cancelBg.setStrokeStyle(2, 0xffffff);
+        const cancelText = this.add.text(0, 0, 'キャンセル', {
+            fontSize: '24px',
+            fill: '#ffffff',
+            fontStyle: 'bold'
+        });
+        cancelText.setOrigin(0.5);
+        cancelButton.add([cancelBg, cancelText]);
+        cancelButton.setSize(150, 50);
+        cancelButton.setInteractive({ useHandCursor: true });
+        cancelButton.on('pointerover', () => {
+            cancelBg.setFillStyle(0x6c7a7d);
+        });
+        cancelButton.on('pointerout', () => {
+            cancelBg.setFillStyle(0x7f8c8d);
+        });
+        cancelButton.on('pointerdown', () => {
+            this.playButtonSound();
+            dialogPanel.destroy();
+            this.deleteConfirmDialog = null;
+        });
+        
+        dialogPanel.add([dialogBg, messageText, deleteButton, cancelButton]);
+        
+        // 参照を保存
+        this.deleteConfirmDialog = {
+            dialogPanel: dialogPanel
+        };
+    }
+    
+    /**
+     * お気に入りを削除
+     */
+    async deleteFavorite(favoriteId) {
+        try {
+            const { getApiClient } = await import('../utils/apiClient.js');
+            const apiClient = getApiClient();
+            const authToken = localStorage.getItem('authToken');
+            
+            if (authToken) {
+                // APIから削除
+                try {
+                    await apiClient.deleteFavorite(authToken, favoriteId);
+                    console.log('Favorite deleted from API:', favoriteId);
+                } catch (apiError) {
+                    console.error('Error deleting favorite from API:', apiError);
+                    // APIエラー時はローカルストレージから削除
+                    this.deleteFavoriteLocal(favoriteId);
+                }
+            } else {
+                // トークンがない場合はローカルストレージから削除
+                this.deleteFavoriteLocal(favoriteId);
+            }
+            
+            this.showSuccessMessage('お気に入りを削除しました！');
+        } catch (error) {
+            console.error('Error deleting favorite:', error);
+            this.showErrorMessage('お気に入りの削除に失敗しました。');
+        }
+    }
+    
+    /**
+     * お気に入りをローカルストレージから削除（フォールバック用）
+     */
+    deleteFavoriteLocal(favoriteId) {
+        const favorites = JSON.parse(localStorage.getItem('rocketFavorites') || '[]');
+        const filteredFavorites = favorites.filter(f => f.id !== favoriteId && f.favoriteId !== favoriteId);
+        localStorage.setItem('rocketFavorites', JSON.stringify(filteredFavorites));
+        console.log('Favorite deleted from local:', favoriteId);
+    }
+    
+    /**
+     * 成功メッセージを表示
+     */
+    showSuccessMessage(message) {
+        this.showMessage(message, 0x27ae60); // 緑色
+    }
+    
+    /**
+     * エラーメッセージを表示
+     */
+    showErrorMessage(message) {
+        this.showMessage(message, 0xe74c3c); // 赤色
+    }
+    
+    /**
+     * メッセージウィンドウを表示
+     */
+    showMessage(message, color) {
+        const screenWidth = this.cameras.main.width;
+        const screenHeight = this.cameras.main.height;
+        const centerX = screenWidth / 2;
+        const centerY = screenHeight / 2;
+        
+        // 既存のメッセージがあれば削除
+        if (this.messageOverlay) {
+            this.messageOverlay.panel.destroy();
+            this.messageOverlay = null;
+        }
+        
+        // メッセージパネル
+        const panelWidth = 500;
+        const panelHeight = 200;
+        const messagePanel = this.add.container(centerX, centerY);
+        messagePanel.setDepth(2200);
+        
+        // パネル背景
+        const panelBg = this.add.rectangle(0, 0, panelWidth, panelHeight, color);
+        panelBg.setStrokeStyle(3, 0xffffff);
+        panelBg.setAlpha(0.95);
+        
+        // メッセージテキスト
+        const messageText = this.add.text(0, 0, message, {
+            fontSize: '28px',
+            fill: '#ffffff',
+            fontStyle: 'bold',
+            align: 'center',
+            wordWrap: { width: panelWidth - 40 }
+        });
+        messageText.setOrigin(0.5);
+        
+        messagePanel.add([panelBg, messageText]);
+        
+        // 参照を保存
+        this.messageOverlay = {
+            panel: messagePanel
+        };
+        
+        // 2秒後に自動的に消える
+        this.time.delayedCall(2000, () => {
+            if (this.messageOverlay && this.messageOverlay.panel) {
+                // フェードアウトアニメーション
+                this.tweens.add({
+                    targets: messagePanel,
+                    alpha: 0,
+                    duration: 300,
+                    ease: 'Power2',
+                    onComplete: () => {
+                        if (this.messageOverlay && this.messageOverlay.panel) {
+                            this.messageOverlay.panel.destroy();
+                            this.messageOverlay = null;
+                        }
+                    }
+                });
+            }
         });
     }
     
@@ -1805,13 +3386,35 @@ export class RocketEditorScene extends Phaser.Scene {
         });
         
         // 再生開始
-        if (autoplay) {
-            video.play().catch(err => {
-                console.warn('Video autoplay failed:', err);
-                // 自動再生が失敗した場合（ブラウザのポリシー）、ユーザー操作後に再生
-                video.muted = true; // ミュートにすると自動再生できる場合がある
-                video.play().catch(e => console.error('Video play failed:', e));
-            });
+        const startPlayback = () => {
+            if (autoplay) {
+                video.play().catch(err => {
+                    console.warn('Video autoplay failed:', err);
+                    // 自動再生が失敗した場合（ブラウザのポリシー）、ユーザー操作後に再生
+                    video.muted = true; // ミュートにすると自動再生できる場合がある
+                    video.play().catch(e => console.error('Video play failed:', e));
+                });
+            }
+        };
+        
+        // 動画の読み込みが完了してから再生を試みる
+        if (video.readyState >= 2) {
+            // 既に読み込まれている場合はすぐに再生
+            startPlayback();
+        } else {
+            // 読み込み完了を待つ
+            video.addEventListener('loadeddata', () => {
+                console.log('Video loaded, starting playback:', videoPath);
+                startPlayback();
+            }, { once: true });
+            
+            // フォールバック: 一定時間後に再生を試みる
+            setTimeout(() => {
+                if (video.readyState >= 2) {
+                    console.log('Video ready after timeout, starting playback:', videoPath);
+                    startPlayback();
+                }
+            }, 1000);
         }
         
         // シーン終了時にクリーンアップ

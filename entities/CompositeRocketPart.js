@@ -332,6 +332,72 @@ export const COMPOSITE_PART_TEMPLATES = [
             { type: 'wing', offsetX: 35, offsetY: -20, side: 'right' }
         ],
         ' ◄►\n ▼'
+    ),
+    
+    // 単体エンジン（縦向き）
+    new CompositeRocketPart(
+        'シングルエンジン',
+        '単体エンジン',
+        [
+            { type: 'engine', offsetX: 0, offsetY: 0, angle: Math.PI / 2 }
+        ],
+        '▼'
+    ),
+    
+    // エンジン4連（縦）
+    new CompositeRocketPart(
+        'クワッドエンジン',
+        '4連エンジン（縦）',
+        [
+            { type: 'engine', offsetX: 0, offsetY: -45, angle: Math.PI / 2 },
+            { type: 'engine', offsetX: 0, offsetY: -15, angle: Math.PI / 2 },
+            { type: 'engine', offsetX: 0, offsetY: 15, angle: Math.PI / 2 },
+            { type: 'engine', offsetX: 0, offsetY: 45, angle: Math.PI / 2 }
+        ],
+        '▼\n▼\n▼\n▼'
+    ),
+    
+    // エンジン+おもり
+    new CompositeRocketPart(
+        '重量エンジン',
+        'エンジン+おもり',
+        [
+            { type: 'engine', offsetX: 0, offsetY: 0, angle: Math.PI / 2 },
+            { type: 'weight', offsetX: 0, offsetY: -40 }
+        ],
+        '⚖️\n▼'
+    ),
+    
+    // エンジン2連（縦）
+    new CompositeRocketPart(
+        'デュアルエンジン',
+        '2連エンジン（縦）',
+        [
+            { type: 'engine', offsetX: 0, offsetY: -25, angle: Math.PI / 2 },
+            { type: 'engine', offsetX: 0, offsetY: 25, angle: Math.PI / 2 }
+        ],
+        '▼\n▼'
+    ),
+    
+    // おもり単体
+    new CompositeRocketPart(
+        'バランスウェイト',
+        'おもり',
+        [
+            { type: 'weight', offsetX: 0, offsetY: 0 }
+        ],
+        '⚖️'
+    ),
+    
+    // おもり2連
+    new CompositeRocketPart(
+        'ヘビーウェイト',
+        'おもり×2',
+        [
+            { type: 'weight', offsetX: 0, offsetY: -30 },
+            { type: 'weight', offsetX: 0, offsetY: 30 }
+        ],
+        '⚖️\n⚖️'
     )
 ];
 

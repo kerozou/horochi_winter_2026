@@ -13,7 +13,10 @@ export class Rocket {
         
         // コックピット分離状態
         this.isCockpitSeparated = false;
+        this.separationCount = 0; // 分離回数（0: 未分離, 1: 1回目（コックピット分離））
         this.separatedCockpitSprites = []; // 分離されたコックピットスプライト（物理オブジェクト）
+        this.separatedRedParts = []; // 分離された赤パーツスプライト（物理オブジェクト）
+        this.transformedCockpitRocket = null; // 変形後のコックピット+赤パーツロケット
         
         // エンティティを作成（状態管理）
         const zoom = GameConfig.cameraZoom || 0.33;
@@ -358,10 +361,50 @@ export class Rocket {
                         imageKey: part.imageKey || 'horochi'
                     });
                     break;
+                // 赤パーツ
+                case 'redengine':
+                case 'redbody':
+                case 'rednose':
+                    // 赤パーツの描画
+                    if (part.type === 'redengine') {
+                        rocketGraphics.fillCircle(px, py, pw / 2);
+                        rocketGraphics.fillStyle(0xff4500);
+                        rocketGraphics.fillTriangle(px, py + pw / 2, px - pw / 4, py + pw / 2 + 20 * scale, px + pw / 4, py + pw / 2 + 20 * scale);
+                    } else if (part.type === 'redbody') {
+                        rocketGraphics.fillRect(px - pw / 2, py - ph / 2, pw, ph);
+                    } else if (part.type === 'rednose') {
+                        rocketGraphics.fillTriangle(px + pw / 2, py, px - pw / 2, py - ph / 2, px - pw / 2, py + ph / 2);
+                        rocketGraphics.fillStyle(0xff4500);
+                        rocketGraphics.fillTriangle(px + pw / 2 + 10 * scale, py, px + pw / 4, py - ph / 4, px + pw / 4, py + ph / 4);
+                    }
+                    rocketGraphics.lineStyle(3 * scale, 0xe74c3c);
+                    if (part.type === 'redengine') {
+                        rocketGraphics.strokeCircle(px, py, pw / 2);
+                    } else if (part.type === 'redbody') {
+                        rocketGraphics.strokeRect(px - pw / 2, py - ph / 2, pw, ph);
+                    } else if (part.type === 'rednose') {
+                        rocketGraphics.strokeTriangle(px + pw / 2, py, px - pw / 2, py - ph / 2, px - pw / 2, py + ph / 2);
+                    }
+                    
+                    // 赤パーツの位置情報を保存（元のパーツ情報も含める）
+                    if (!this.redPartPositions) {
+                        this.redPartPositions = [];
+                    }
+                    this.redPartPositions.push({
+                        x: px,
+                        y: py,
+                        width: pw,
+                        height: ph,
+                        type: part.type,
+                        color: part.color,
+                        originalPart: part // 元のパーツ情報を保存
+                    });
+                    rocketGraphics.fillStyle(part.color);
+                    break;
             }
             
-            // 枠線（コックピット以外）
-            if (part.type !== 'cockpit') {
+            // 枠線（コックピットと赤パーツ以外）
+            if (part.type !== 'cockpit' && part.type !== 'redengine' && part.type !== 'redbody' && part.type !== 'rednose') {
                 rocketGraphics.lineStyle(2 * scale, 0xffffff, 0.8);
                 rocketGraphics.strokeRect(px - pw / 2, py - ph / 2, pw, ph);
             }
@@ -855,12 +898,13 @@ export class Rocket {
      * コックピットを分離する（運動量保存を考慮）
      * @param {number} charge - 分離ゲージ（0-100）
      */
-    separateCockpit(charge) {
-        if (this.isCockpitSeparated || !this.cockpitSprites || this.cockpitSprites.length === 0) {
+    separateCockpit(charge, thrustMultiplier = 1.0) {
+        // 1回分離後は分離できない
+        if (this.separationCount >= 1 || !this.cockpitSprites || this.cockpitSprites.length === 0) {
             return;
         }
         
-        console.log('Separating cockpit with charge:', charge);
+        console.log('Separating cockpit with charge:', charge, 'thrust multiplier:', thrustMultiplier, 'Separation count:', this.separationCount + 1);
         
         // 現在のロケットの速度と位置を取得
         const rocketVelocity = this.sprite.body.velocity;
@@ -883,8 +927,21 @@ export class Rocket {
             cockpitMass = 1.5; // CockpitPartのデフォルト質量
         }
         
-        // ロケット本体の質量（コックピットを除く）
-        const rocketBodyMass = rocketMass - cockpitMass;
+        // 1回目の分離時は赤パーツの質量も含める
+        let redPartsMass = 0;
+        let redParts = [];
+        if (this.separationCount === 0 && this.rocketDesign && this.rocketDesign.parts) {
+            redParts = this.rocketDesign.parts.filter(p => 
+                p.type === 'redengine' || p.type === 'redbody' || p.type === 'rednose'
+            );
+            redPartsMass = redParts.reduce((sum, part) => sum + part.mass, 0);
+        }
+        
+        // 分離される質量（コックピット + 赤パーツ（1回目の場合））
+        const separatedMass = cockpitMass + redPartsMass;
+        
+        // ロケット本体の質量（コックピットと赤パーツを除く）
+        const rocketBodyMass = rocketMass - separatedMass;
         
         // チャージ量に応じた分離速度を計算（30-100の範囲を1-3 m/sに変換）
         // 元の速度に加えるわずかな分離速度
@@ -960,8 +1017,14 @@ export class Rocket {
                 const tangentialVelocityY = rocketAngularVelocity * cockpitRelativeX;
                 
                 // コックピットの速度 = ロケットの並進速度 + 接線速度（遠心力効果）
-                const cockpitVelocityX = rocketVelocity.x + tangentialVelocityX;
-                const cockpitVelocityY = rocketVelocity.y + tangentialVelocityY;
+                let cockpitVelocityX = rocketVelocity.x + tangentialVelocityX;
+                let cockpitVelocityY = rocketVelocity.y + tangentialVelocityY;
+                
+                // 推進力倍率を適用（分離方向に推進力を加える）
+                // 分離方向（上方向）に推進力を適用
+                const thrustForce = 5.0 * thrustMultiplier; // 基本推進力5.0に倍率を適用
+                cockpitVelocityX += separationDirX * thrustForce;
+                cockpitVelocityY += separationDirY * thrustForce;
                 
                 separatedCockpit.setVelocity(cockpitVelocityX, cockpitVelocityY);
                 
@@ -977,10 +1040,111 @@ export class Rocket {
             }
         });
         
+        // 1回目の分離時は赤パーツも一緒に分離
+        if (this.separationCount === 0 && redParts.length > 0 && this.redPartPositions) {
+            const zoom = GameConfig.cameraZoom || 0.33;
+            const scale = 1 / zoom;
+            const width = this.rocketDesign ? (this.rocketDesign.size.height * scale) : (GameConfig.rocket.width * scale);
+            const height = this.rocketDesign ? (this.rocketDesign.size.width * scale) : (GameConfig.rocket.height * scale);
+            
+            const rocketAngularVelocity = this.sprite.body.angularVelocity;
+            
+            // 赤パーツの位置情報を使用して分離
+            this.redPartPositions.forEach((redPartPos, index) => {
+                const redPart = redParts.find(p => p.type === redPartPos.type);
+                if (redPart) {
+                    // テクスチャの中心からの相対位置
+                    const relX = redPartPos.x - width / 2;
+                    const relY = redPartPos.y - height / 2;
+                    
+                    // ロケットの回転を考慮した位置を計算
+                    const cos = Math.cos(rocketRotation);
+                    const sin = Math.sin(rocketRotation);
+                    const rotatedX = relX * cos - relY * sin;
+                    const rotatedY = relX * sin + relY * cos;
+                    
+                    const redPartWorldX = rocketX + rotatedX;
+                    const redPartWorldY = rocketY + rotatedY;
+                    
+                    // 赤パーツの物理オブジェクトを作成
+                    const separatedRedPart = this.scene.matter.add.sprite(
+                        redPartWorldX,
+                        redPartWorldY,
+                        null,
+                        null,
+                        {
+                            shape: {
+                                type: redPart.type === 'redengine' ? 'circle' : 'rectangle',
+                                radius: redPartPos.width / 2,
+                                width: redPartPos.width,
+                                height: redPartPos.height
+                            },
+                            frictionAir: 0.008,
+                            density: 0.001
+                        }
+                    );
+                    
+                    // 赤パーツのグラフィックスを描画
+                    const redPartGraphics = this.scene.add.graphics();
+                    redPartGraphics.fillStyle(redPart.color);
+                    if (redPart.type === 'redengine') {
+                        redPartGraphics.fillCircle(0, 0, redPartPos.width / 2);
+                        redPartGraphics.fillStyle(0xff4500);
+                        redPartGraphics.fillTriangle(0, redPartPos.width / 2, -redPartPos.width / 4, redPartPos.width / 2 + 20, redPartPos.width / 4, redPartPos.width / 2 + 20);
+                    } else if (redPart.type === 'redbody') {
+                        redPartGraphics.fillRect(-redPartPos.width / 2, -redPartPos.height / 2, redPartPos.width, redPartPos.height);
+                    } else if (redPart.type === 'rednose') {
+                        redPartGraphics.fillTriangle(0, -redPartPos.height / 2, -redPartPos.width / 2, redPartPos.height / 2, redPartPos.width / 2, redPartPos.height / 2);
+                        redPartGraphics.fillStyle(0xff4500);
+                        redPartGraphics.fillTriangle(0, -redPartPos.height / 2 - 10, -redPartPos.width / 4, -redPartPos.height / 2, redPartPos.width / 4, -redPartPos.height / 2);
+                    }
+                    redPartGraphics.lineStyle(3, 0xe74c3c);
+                    if (redPart.type === 'redengine') {
+                        redPartGraphics.strokeCircle(0, 0, redPartPos.width / 2);
+                    } else if (redPart.type === 'redbody') {
+                        redPartGraphics.strokeRect(-redPartPos.width / 2, -redPartPos.height / 2, redPartPos.width, redPartPos.height);
+                    } else if (redPart.type === 'rednose') {
+                        redPartGraphics.strokeTriangle(0, -redPartPos.height / 2, -redPartPos.width / 2, redPartPos.height / 2, redPartPos.width / 2, redPartPos.height / 2);
+                    }
+                    
+                    const textureKey = `redPart_${redPart.type}_${index}`;
+                    redPartGraphics.generateTexture(textureKey, redPartPos.width, redPartPos.height);
+                    redPartGraphics.destroy();
+                    
+                    separatedRedPart.setTexture(textureKey);
+                    separatedRedPart.setDisplaySize(redPartPos.width, redPartPos.height);
+                    separatedRedPart.setRotation(rocketRotation);
+                    separatedRedPart.setVisible(true);
+                    
+                    // 速度を計算（コックピットと同じロジック）
+                    const redPartRelativeX = rotatedX;
+                    const redPartRelativeY = rotatedY;
+                    const tangentialVelocityX = -rocketAngularVelocity * redPartRelativeY;
+                    const tangentialVelocityY = rocketAngularVelocity * redPartRelativeX;
+                    const redPartVelocityX = rocketVelocity.x + tangentialVelocityX;
+                    const redPartVelocityY = rocketVelocity.y + tangentialVelocityY;
+                    
+                    separatedRedPart.setVelocity(redPartVelocityX, redPartVelocityY);
+                    separatedRedPart.setAngularVelocity(rocketAngularVelocity * 0.5);
+                    
+                    this.separatedRedParts.push(separatedRedPart);
+                    
+                    console.log('Red part separated:', redPart.type, 'at:', redPartWorldX, redPartWorldY);
+                }
+            });
+            
+            // コックピットと赤パーツを結合して新しいロケットに変形（少し遅延させて実行）
+            if (this.separatedCockpitSprites.length > 0 && this.separatedRedParts.length > 0) {
+                this.scene.time.delayedCall(100, () => {
+                    this.transformCockpitToRocket();
+                });
+            }
+        }
+        
         // ロケット本体に分離方向の逆向きに力を加える
         // チャージ量に応じた分離速度をロケット本体の速度変化として適用
-        const rocketVelocityChangeX = -(separationDirX * separationSpeed) * (cockpitMass / rocketBodyMass);
-        const rocketVelocityChangeY = -(separationDirY * separationSpeed) * (cockpitMass / rocketBodyMass);
+        const rocketVelocityChangeX = -(separationDirX * separationSpeed) * (separatedMass / rocketBodyMass);
+        const rocketVelocityChangeY = -(separationDirY * separationSpeed) * (separatedMass / rocketBodyMass);
         
         // ロケットの新しい速度（コックピット分離の反作用）
         const newRocketVelocityX = rocketVelocity.x + rocketVelocityChangeX;
@@ -996,17 +1160,184 @@ export class Rocket {
         if (this.separatedCockpitSprites.length > 0) {
             const initialMomentumX = rocketMass * rocketVelocity.x;
             const initialMomentumY = rocketMass * rocketVelocity.y;
-            const finalMomentumX = rocketBodyMass * newRocketVelocityX + cockpitMass * rocketVelocity.x;
-            const finalMomentumY = rocketBodyMass * newRocketVelocityY + cockpitMass * rocketVelocity.y;
+            const finalMomentumX = rocketBodyMass * newRocketVelocityX + separatedMass * rocketVelocity.x;
+            const finalMomentumY = rocketBodyMass * newRocketVelocityY + separatedMass * rocketVelocity.y;
             
             console.log('Separation summary:');
-            console.log('- Cockpit keeps original velocity');
+            console.log('- Separated parts keep original velocity');
             console.log('- Rocket body gets recoil');
             console.log('Initial momentum:', initialMomentumX.toFixed(2), initialMomentumY.toFixed(2));
             console.log('Final momentum:', finalMomentumX.toFixed(2), finalMomentumY.toFixed(2));
             console.log('Difference:', (finalMomentumX - initialMomentumX).toFixed(2), (finalMomentumY - initialMomentumY).toFixed(2));
         }
         
+        this.separationCount++;
         this.isCockpitSeparated = true;
+    }
+    
+    /**
+     * コックピットと赤パーツを結合して新しいロケットに変形
+     */
+    transformCockpitToRocket() {
+        if (this.separatedCockpitSprites.length === 0 || this.separatedRedParts.length === 0) {
+            return;
+        }
+        
+        const cockpitSprite = this.separatedCockpitSprites[0];
+        const cockpitX = cockpitSprite.x;
+        const cockpitY = cockpitSprite.y;
+        const cockpitVelocity = cockpitSprite.body.velocity;
+        const cockpitAngularVelocity = cockpitSprite.body.angularVelocity;
+        
+        // コックピットと赤パーツの位置を計算
+        const redPartsPositions = this.separatedRedParts.map(redPart => ({
+            x: redPart.x - cockpitX,
+            y: redPart.y - cockpitY,
+            sprite: redPart
+        }));
+        
+        // コックピットを中心にした新しいロケットのサイズを計算
+        const zoom = GameConfig.cameraZoom || 0.33;
+        const scale = 1 / zoom;
+        
+        // コックピットパーツを取得
+        const cockpitPart = this.rocketDesign.parts.find(p => p.type === 'cockpit');
+        
+        // 赤パーツとコックピットの境界を計算
+        const redParts = this.rocketDesign.parts.filter(p => 
+            p.type === 'redengine' || p.type === 'redbody' || p.type === 'rednose'
+        );
+        
+        let minX = 0, maxX = 0, minY = 0, maxY = 0;
+        
+        // コックピットの位置（中心）
+        if (cockpitPart) {
+            const cockpitGameX = -cockpitPart.y;
+            const cockpitGameY = cockpitPart.x;
+            minX = maxX = cockpitGameX;
+            minY = maxY = cockpitGameY;
+        }
+        
+        // 赤パーツの位置を計算
+        redParts.forEach(redPart => {
+            const partGameX = -redPart.y;
+            const partGameY = redPart.x;
+            const redPartPos = this.redPartPositions.find(pos => pos.type === redPart.type);
+            if (redPartPos) {
+                const halfWidth = redPartPos.width / (2 * scale);
+                const halfHeight = redPartPos.height / (2 * scale);
+                minX = Math.min(minX, partGameX - halfWidth);
+                maxX = Math.max(maxX, partGameX + halfWidth);
+                minY = Math.min(minY, partGameY - halfHeight);
+                maxY = Math.max(maxY, partGameY + halfHeight);
+            }
+        });
+        
+        const baseWidth = (maxX - minX) * scale + 100;
+        const baseHeight = (maxY - minY) * scale + 100;
+        const offsetX = (minX + maxX) / 2;
+        const offsetY = (minY + maxY) / 2;
+        
+        // 新しいロケットのテクスチャを生成
+        const rocketGraphics = this.scene.add.graphics();
+        
+        // コックピットを描画（中心）
+        const cockpitPos = this.cockpitPositions[0];
+        if (cockpitPos && cockpitPart) {
+            const cockpitGameX = -cockpitPart.y;
+            const cockpitGameY = cockpitPart.x;
+            const cockpitRelX = (cockpitGameX - offsetX) * scale + baseWidth / 2;
+            const cockpitRelY = (cockpitGameY - offsetY) * scale + baseHeight / 2;
+            
+            rocketGraphics.fillStyle(0x2c3e50);
+            rocketGraphics.fillRect(cockpitRelX - cockpitPos.width / 2, cockpitRelY - cockpitPos.height / 2, cockpitPos.width, cockpitPos.height);
+            rocketGraphics.lineStyle(2 * scale, 0xffd93d, 0.8);
+            rocketGraphics.strokeRect(cockpitRelX - cockpitPos.width / 2, cockpitRelY - cockpitPos.height / 2, cockpitPos.width, cockpitPos.height);
+        }
+        
+        // 赤パーツを描画（コックピットの周りに配置）
+        // コックピットを中心に、赤パーツを適切な位置に配置
+        // redPartsは既に1207行目で定義されているので、再定義しない
+        
+        redParts.forEach((redPart, index) => {
+            const redPartPos = this.redPartPositions.find(pos => pos.type === redPart.type);
+            
+            if (redPartPos) {
+                // コックピットを中心とした相対位置を計算
+                // エディタ座標からゲーム座標への変換
+                const partGameX = -redPart.y;
+                const partGameY = redPart.x;
+                
+                // テクスチャ内の相対位置（オフセットを考慮）
+                const relX = (partGameX - offsetX) * scale + baseWidth / 2;
+                const relY = (partGameY - offsetY) * scale + baseHeight / 2;
+                
+                rocketGraphics.fillStyle(redPartPos.color);
+                if (redPartPos.type === 'redengine') {
+                    rocketGraphics.fillCircle(relX, relY, redPartPos.width / 2);
+                    rocketGraphics.fillStyle(0xff4500);
+                    rocketGraphics.fillTriangle(relX, relY + redPartPos.width / 2, relX - redPartPos.width / 4, relY + redPartPos.width / 2 + 20, relX + redPartPos.width / 4, relY + redPartPos.width / 2 + 20);
+                } else if (redPartPos.type === 'redbody') {
+                    rocketGraphics.fillRect(relX - redPartPos.width / 2, relY - redPartPos.height / 2, redPartPos.width, redPartPos.height);
+                } else if (redPartPos.type === 'rednose') {
+                    rocketGraphics.fillTriangle(relX, relY - redPartPos.height / 2, relX - redPartPos.width / 2, relY + redPartPos.height / 2, relX + redPartPos.width / 2, relY + redPartPos.height / 2);
+                    rocketGraphics.fillStyle(0xff4500);
+                    rocketGraphics.fillTriangle(relX, relY - redPartPos.height / 2 - 10, relX - redPartPos.width / 4, relY - redPartPos.height / 2, relX + redPartPos.width / 4, relY - redPartPos.height / 2);
+                }
+                rocketGraphics.lineStyle(3 * scale, 0xe74c3c);
+                if (redPartPos.type === 'redengine') {
+                    rocketGraphics.strokeCircle(relX, relY, redPartPos.width / 2);
+                } else if (redPartPos.type === 'redbody') {
+                    rocketGraphics.strokeRect(relX - redPartPos.width / 2, relY - redPartPos.height / 2, redPartPos.width, redPartPos.height);
+                } else if (redPartPos.type === 'rednose') {
+                    rocketGraphics.strokeTriangle(relX, relY - redPartPos.height / 2, relX - redPartPos.width / 2, relY + redPartPos.height / 2, relX + redPartPos.width / 2, relY + redPartPos.height / 2);
+                }
+            }
+        });
+        
+        // テクスチャを生成
+        const textureKey = 'transformedCockpitRocket';
+        if (this.scene.textures.exists(textureKey)) {
+            this.scene.textures.remove(textureKey);
+        }
+        rocketGraphics.generateTexture(textureKey, baseWidth, baseHeight);
+        rocketGraphics.destroy();
+        
+        // 既存のコックピットと赤パーツのスプライトを非表示
+        cockpitSprite.setVisible(false);
+        this.separatedRedParts.forEach(redPart => {
+            redPart.setVisible(false);
+        });
+        
+        // 新しいロケットスプライトを作成
+        const transformedRocket = this.scene.matter.add.sprite(
+            cockpitX,
+            cockpitY,
+            textureKey,
+            null,
+            {
+                shape: {
+                    type: 'rectangle',
+                    width: baseWidth,
+                    height: baseHeight
+                },
+                frictionAir: 0.008,
+                density: 0.001
+            }
+        );
+        
+        transformedRocket.setDisplaySize(baseWidth, baseHeight);
+        transformedRocket.setRotation(cockpitSprite.rotation);
+        transformedRocket.setVelocity(cockpitVelocity.x, cockpitVelocity.y);
+        transformedRocket.setAngularVelocity(cockpitAngularVelocity);
+        transformedRocket.setVisible(true);
+        
+        // 変形後のロケットを保存
+        this.transformedCockpitRocket = transformedRocket;
+        
+        // 分離されたコックピットスプライトを更新（変形後のロケットを参照）
+        this.separatedCockpitSprites[0] = transformedRocket;
+        
+        console.log('Cockpit transformed to rocket with red parts at:', cockpitX, cockpitY);
     }
 }

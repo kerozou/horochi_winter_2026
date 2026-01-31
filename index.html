@@ -103,6 +103,19 @@
         <div id="game-container"></div>
     </div>
     <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
+    <script>
+        // API GatewayのエンドポイントURLを設定
+        // デプロイ後にCDKの出力から取得したURLを設定してください
+        // 例: window.API_BASE_URL = 'https://xxxxxxxxxx.execute-api.ap-northeast-1.amazonaws.com/prod';
+        // 開発環境では未設定のまま（デフォルトで http://localhost:3000 が使用されます）
+        
+        // 本番環境のAPI Gateway URLを設定
+        // ローカル開発時はコメントアウトしてください（デフォルトで http://localhost:3000 が使用されます）
+        // window.API_BASE_URL = '';
+        
+        // デバッグ用: 設定されたURLをコンソールに表示
+        console.log('API_BASE_URL set to:', window.API_BASE_URL);
+    </script>
     <script type="module">
         // タイムスタンプでキャッシュを強制的にバイパス
         const timestamp = Date.now();
