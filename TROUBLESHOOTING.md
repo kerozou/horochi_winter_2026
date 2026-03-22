@@ -101,3 +101,15 @@ aws lambda list-functions --query "Functions[?contains(FunctionName, 'horochi-wi
 aws logs tail /aws/lambda/horochi-winter-2026-backend-dev-login --follow
 ```
 
+---
+
+## 本番サイトが真っ黒で動かない（静的ホスティング）
+
+`index.html` が `./node_modules/phaser/dist/phaser.min.js` を参照していた場合、**`node_modules` をサーバにアップロードしていない**と Phaser が 404 になり、ゲームが初期化されず `#game-container` が黒いままになります。
+
+対策:
+
+- リポジトリの **`vendor/phaser.min.js`** をデプロイ対象に含める（`npm install` 後の `postinstall` で生成・更新されます）。
+- `index.html` は **`./vendor/phaser.min.js`** を読み込む想定です。
+- ブラウザの開発者ツール（F12）→ **ネットワーク** で `phaser.min.js` が 200 になるか、`game.js` が 200 になるか確認してください。
+

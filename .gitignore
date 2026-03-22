@@ -2,3 +2,6 @@
 
 # 依存関係（npm install で再取得。electron バイナリは 100MB 超で GitHub に push 不可）
 node_modules/
+
+# electron-builder 成果物
+dist-app/

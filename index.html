@@ -141,8 +141,8 @@
         </div>
         <div id="game-container"></div>
     </div>
-    <!-- npm の phaser パッケージを同梱（オフライン可・CDN 不要） -->
-    <script src="./node_modules/phaser/dist/phaser.min.js"></script>
+    <!-- 本番デプロイでは node_modules をアップロードしないため vendor/ を参照（npm install で自動コピー） -->
+    <script src="./vendor/phaser.min.js"></script>
     <script>
         // API GatewayのエンドポイントURLを設定
         // デプロイ後にCDKの出力から取得したURLを設定してください
