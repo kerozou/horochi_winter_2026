@@ -92,7 +92,46 @@
                 display: none;
             }
         }
+
+        /* Electron: グラデーション枠をやめ、ゲーム領域（黒）だけをウィンドウ全面に */
+        html.electron,
+        html.electron body {
+            width: 100%;
+            height: 100%;
+            margin: 0;
+        }
+
+        html.electron body {
+            display: block;
+            background: #000;
+        }
+
+        html.electron body > div {
+            width: 100%;
+            height: 100%;
+            position: relative;
+        }
+
+        html.electron #game-container {
+            width: 100%;
+            height: 100%;
+            border: none;
+            border-radius: 0;
+            box-shadow: none;
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+
+        html.electron .info {
+            display: none;
+        }
     </style>
+    <script>
+        if (typeof window.electronApp !== 'undefined') {
+            document.documentElement.classList.add('electron');
+        }
+    </script>
 </head>
 <body>
     <div>
@@ -102,7 +141,8 @@
         </div>
         <div id="game-container"></div>
     </div>
-    <script src="https://cdn.jsdelivr.net/npm/phaser@3.80.1/dist/phaser.min.js"></script>
+    <!-- npm の phaser パッケージを同梱（オフライン可・CDN 不要） -->
+    <script src="./node_modules/phaser/dist/phaser.min.js"></script>
     <script>
         // API GatewayのエンドポイントURLを設定
         // デプロイ後にCDKの出力から取得したURLを設定してください
@@ -116,14 +156,13 @@
         // デバッグ用: 設定されたURLをコンソールに表示
         console.log('API_BASE_URL set to:', window.API_BASE_URL);
     </script>
-    <script type="module">
-        // タイムスタンプでキャッシュを強制的にバイパス
-        const timestamp = Date.now();
-        import(`./game.js?t=${timestamp}`);
-    </script>
+    <script type="module" src="./game.js"></script>
     <script>
         // ゲームエリア内で右クリックメニューを無効化
         document.addEventListener('DOMContentLoaded', () => {
+            if (typeof window.electronApp !== 'undefined') {
+                document.documentElement.classList.add('electron');
+            }
             const gameContainer = document.getElementById('game-container');
             if (gameContainer) {
                 gameContainer.addEventListener('contextmenu', (e) => {

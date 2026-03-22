@@ -293,7 +293,7 @@ export class TitleScene extends Phaser.Scene {
         const subtitle = this.add.text(
             rightHalfCenterX,
             centerY - 230,
-            'ver2.0\nナウいロケットを作って皆に自慢しよう！',
+            'ver2.1\nナウいロケットを作って皆に自慢しよう！',
             {
                 fontSize: '28px',
                 fill: '#ffffff',
@@ -302,22 +302,10 @@ export class TitleScene extends Phaser.Scene {
         );
         subtitle.setOrigin(0.5);
 
-        
-        // ランクマッチボタン
-        const rankMatchButton = this.createButton(
-            rightHalfCenterX,
-            centerY - 80,
-            '⚔️ ランクマッチ(β)',
-            () => {
-                console.log('Transitioning to Rank Match Scene...');
-                this.transitionToRankMatchScene();
-            }
-        );
-        
         // スタートボタン
         const startButton = this.createButton(
             rightHalfCenterX,
-            centerY,
+            centerY - 40,
             '🧭 限界スコアモード',
             () => {
                 console.log('Starting Rocket Editor...');
@@ -328,7 +316,7 @@ export class TitleScene extends Phaser.Scene {
         // ランキング表示ボタン
         const rankingButton = this.createButton(
             rightHalfCenterX,
-            centerY + 80,
+            centerY + 40,
             '👑 ランキング',
             () => {
                 console.log('Showing ranking...');
@@ -339,7 +327,7 @@ export class TitleScene extends Phaser.Scene {
         // トロフィーボタン
         const trophyButton = this.createButton(
             rightHalfCenterX,
-            centerY + 160,
+            centerY + 120,
             '🏆 トロフィー',
             () => {
                 console.log('Transitioning to Trophy Scene...');
@@ -414,7 +402,12 @@ export class TitleScene extends Phaser.Scene {
                 // 自己記録をクリア
                 localStorage.removeItem('personalBest');
                 localStorage.removeItem('distanceRanking');
-                localStorage.removeItem('rankMatchRanking');
+                const keysToRemove = [];
+                for (let i = 0; i < localStorage.length; i++) {
+                    const k = localStorage.key(i);
+                    if (k && k.startsWith('rankMatchRanking_')) keysToRemove.push(k);
+                }
+                keysToRemove.forEach(k => localStorage.removeItem(k));
                 console.log('自己記録をクリアしました');
                 alert('自己記録をクリアしました');
             });
@@ -887,7 +880,7 @@ export class TitleScene extends Phaser.Scene {
     }
     
     /**
-     * ランキングを表示（左側: ランクマッチ、右側: 距離ランキング）
+     * ランキングを表示（限界スコア）
      */
     async showRanking() {
         const screenWidth = this.cameras.main.width;
@@ -912,199 +905,23 @@ export class TitleScene extends Phaser.Scene {
         overlayBg.setInteractive();
         overlayBg.setDepth(1000);
         
-        // 今日の日付を取得
-        const today = this.getTodayDateString();
+        const panelWidth = 500;
+        const panelHeight = 500;
+        const distancePanel = this.add.container(centerX, centerY);
+        distancePanel.setDepth(1001);
         
-        // 左側: ランクマッチランキングパネル
-        const leftPanelX = screenWidth / 4;
-        const leftPanelY = centerY;
-        const leftPanelWidth = 500;
-        const leftPanelHeight = 500;
-        const leftRankMatchPanel = this.add.container(leftPanelX, leftPanelY);
-        leftRankMatchPanel.setDepth(1001);
+        const panelBg = this.add.rectangle(0, 0, panelWidth, panelHeight, 0x2c3e50);
+        panelBg.setStrokeStyle(3, 0xffffff);
         
-        // 左パネル背景
-        const leftPanelBg = this.add.rectangle(0, 0, leftPanelWidth, leftPanelHeight, 0x2c3e50);
-        leftPanelBg.setStrokeStyle(3, 0xffffff);
-        
-        // 左パネルタイトル
-        const leftPanelTitle = this.add.text(0, -200, '⚔️ ランクマッチ', {
+        const panelTitle = this.add.text(0, -200, '🧭 限界スコアランキング', {
             fontSize: '28px',
             fill: '#ffffff',
             fontStyle: 'bold'
         });
-        leftPanelTitle.setOrigin(0.5);
+        panelTitle.setOrigin(0.5);
         
-        // 日付表示
-        const leftDateText = this.add.text(0, -170, today, {
-            fontSize: '16px',
-            fill: '#bdc3c7'
-        });
-        leftDateText.setOrigin(0.5);
-        
-        // ローディングメッセージを表示
-        const leftLoadingText = this.add.text(0, 0, 'サーバーに問い合わせ中...', {
-            fontSize: '18px',
-            fill: '#ffffff',
-            fontStyle: 'bold'
-        });
-        leftLoadingText.setOrigin(0.5);
-        leftRankMatchPanel.add([leftPanelBg, leftPanelTitle, leftDateText, leftLoadingText]);
-        
-        // ランクマッチランキングデータを取得（API呼び出し）
-        let rankMatchRanking = [];
-        try {
-            const { getApiClient } = await import('../utils/apiClient.js');
-            const apiClient = getApiClient();
-            const authToken = localStorage.getItem('authToken');
-            const response = await apiClient.getRanking('rankMatch', today, 10, authToken);
-            rankMatchRanking = response.data?.records || [];
-        } catch (error) {
-            console.error('Error fetching rank match ranking:', error);
-            // フォールバック: ローカルストレージから取得
-            const rankMatchKey = `rankMatchRanking_${today}`;
-            rankMatchRanking = JSON.parse(localStorage.getItem(rankMatchKey) || '[]');
-        }
-        
-        // ローディングメッセージを削除
-        leftLoadingText.destroy();
-        
-        // ランクマッチランキング内容（個別のテキストとして表示）
-        const rankMatchItems = [];
-        if (rankMatchRanking.length === 0) {
-            const noRecordText = this.add.text(0, 0, 'まだ記録がありません\n\nランクマッチで\n記録を残しましょう！', {
-                fontSize: '16px',
-                fill: '#bdc3c7',
-                align: 'center'
-            });
-            noRecordText.setOrigin(0.5);
-            rankMatchItems.push(noRecordText);
-        } else {
-            const startY = -100;
-            const itemSpacing = 35; // 1~3位は大きく表示するため間隔を広げる
-            const normalItemSpacing = 20; // 4位以降の間隔
-            
-            rankMatchRanking.slice(0, 10).forEach((record, index) => {
-                const rank = index + 1;
-                const distance = record.distance;
-                // 名前を5文字にパディング（後ろにスペースを追加）
-                const name = (record.name || 'AAA').padEnd(5, ' ');
-                const date = new Date(record.date);
-                const dateStr = `${date.getMonth() + 1}/${date.getDate()} ${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`;
-                
-                // 1~3位は大きく表示、4位以降は通常サイズ
-                const isTop3 = rank <= 3;
-                const fontSize = isTop3 ? '24px' : '16px';
-                const nameFontSize = isTop3 ? '22px' : '16px';
-                const distanceFontSize = isTop3 ? '20px' : '14px';
-                
-                // Y座標を計算（1~3位は大きく、4位以降は通常サイズ）
-                let y = startY;
-                if (rank <= 3) {
-                    y = startY + (rank - 1) * itemSpacing;
-                } else {
-                    y = startY + 3 * itemSpacing + (rank - 4) * normalItemSpacing;
-                }
-                
-                // メダル表示
-                let medal = '';
-                if (rank === 1) medal = '🥇';
-                else if (rank === 2) medal = '🥈';
-                else if (rank === 3) medal = '🥉';
-                else medal = `${rank}.`;
-                
-                // メダル/ランク表示
-                const medalText = this.add.text(-200, y, medal, {
-                    fontSize: isTop3 ? '36px' : '20px',
-                    fill: '#ffffff',
-                    fontStyle: 'bold'
-                });
-                medalText.setOrigin(0, 0.5);
-                rankMatchItems.push(medalText);
-                
-                // ユーザー名（左側に配置）
-                const nameY = y; // 名前と飛距離を同じ高さに
-                const nameText = this.add.text(-150, nameY, name, {
-                    fontSize: nameFontSize,
-                    fill: '#ffffff',
-                    fontStyle: 'bold'
-                });
-                nameText.setOrigin(0, 0.5);
-                rankMatchItems.push(nameText);
-                
-                // 飛距離（名前の後ろに余白を設けて配置）
-                const nameWidth = nameText.width; // 名前の幅を取得
-                const spacing = isTop3 ? 30 : 20; // 1~3位は余白を広めに
-                const distanceX = -150 + nameWidth + spacing;
-                const distanceText = this.add.text(distanceX, nameY, `${distance.toLocaleString()} m`, {
-                    fontSize: distanceFontSize,
-                    fill: '#3498db',
-                    fontStyle: 'bold'
-                });
-                distanceText.setOrigin(0, 0.5);
-                rankMatchItems.push(distanceText);
-                
-                // 日時（すべての順位に表示）
-                const distanceWidth = distanceText.width; // 飛距離の幅を取得
-                const dateSpacing = isTop3 ? 20 : 15; // 1~3位は余白を広めに
-                const dateX = distanceX + distanceWidth + dateSpacing;
-                const dateText = this.add.text(dateX, y, `(${dateStr})`, {
-                    fontSize: isTop3 ? '14px' : '12px',
-                    fill: '#bdc3c7'
-                });
-                dateText.setOrigin(0, 0.5);
-                rankMatchItems.push(dateText);
-            });
-        }
-        
-        leftRankMatchPanel.add([leftPanelBg, leftPanelTitle, leftDateText, ...rankMatchItems]);
-        
-        // 右側: 距離ランキングパネル
-        const rightPanelX = screenWidth * 3 / 4;
-        const rightPanelY = centerY;
-        const rightPanelWidth = 500;
-        const rightPanelHeight = 500;
-        const rightDistancePanel = this.add.container(rightPanelX, rightPanelY);
-        rightDistancePanel.setDepth(1001);
-        
-        // 右パネル背景
-        const rightPanelBg = this.add.rectangle(0, 0, rightPanelWidth, rightPanelHeight, 0x2c3e50);
-        rightPanelBg.setStrokeStyle(3, 0xffffff);
-        
-        // 右パネルタイトル
-        const rightPanelTitle = this.add.text(0, -200, '🧭 限界スコアランキング', {
-            fontSize: '28px',
-            fill: '#ffffff',
-            fontStyle: 'bold'
-        });
-        rightPanelTitle.setOrigin(0.5);
-        
-        // ローディングメッセージを表示
-        const rightLoadingText = this.add.text(0, 0, 'サーバーに問い合わせ中...', {
-            fontSize: '18px',
-            fill: '#ffffff',
-            fontStyle: 'bold'
-        });
-        rightLoadingText.setOrigin(0.5);
-        rightDistancePanel.add([rightPanelBg, rightPanelTitle, rightLoadingText]);
-        
-        // 距離ランキングデータを取得（API呼び出し）
         let distanceRanking = [];
-        try {
-            const { getApiClient } = await import('../utils/apiClient.js');
-            const apiClient = getApiClient();
-            const authToken = localStorage.getItem('authToken');
-            const response = await apiClient.getRanking('distance', null, 10, authToken);
-            distanceRanking = response.data?.records || [];
-        } catch (error) {
-            console.error('Error fetching distance ranking:', error);
-            // フォールバック: ローカルストレージから取得
-            const distanceRankingKey = 'distanceRanking';
-            distanceRanking = JSON.parse(localStorage.getItem(distanceRankingKey) || '[]');
-        }
-        
-        // ローディングメッセージを削除
-        rightLoadingText.destroy();
+        distanceRanking = JSON.parse(localStorage.getItem('distanceRanking') || '[]');
         
         // 距離ランキング内容（個別のテキストとして表示）
         const distanceItems = [];
@@ -1194,7 +1011,7 @@ export class TitleScene extends Phaser.Scene {
             });
         }
         
-        rightDistancePanel.add([rightPanelBg, rightPanelTitle, ...distanceItems]);
+        distancePanel.add([panelBg, panelTitle, ...distanceItems]);
         
         // 閉じるボタン（中央下部）
         const closeButton = this.add.container(centerX, centerY + 250);
@@ -1238,12 +1055,11 @@ export class TitleScene extends Phaser.Scene {
         }
         
         // フェードインアニメーション
-        leftRankMatchPanel.setAlpha(0);
-        rightDistancePanel.setAlpha(0);
+        distancePanel.setAlpha(0);
         closeButton.setAlpha(0);
         overlayBg.setAlpha(0);
         this.tweens.add({
-            targets: [leftRankMatchPanel, rightDistancePanel, closeButton, overlayBg],
+            targets: [distancePanel, closeButton, overlayBg],
             alpha: 1,
             duration: 300,
             ease: 'Power2'
@@ -1252,21 +1068,9 @@ export class TitleScene extends Phaser.Scene {
         // 参照を保存
         this.rankingOverlay = {
             overlayBg: overlayBg,
-            leftRankMatchPanel: leftRankMatchPanel,
-            rightDistancePanel: rightDistancePanel,
+            distancePanel: distancePanel,
             closeButton: closeButton
         };
-    }
-    
-    /**
-     * 今日の日付を文字列で取得（YYYY-MM-DD形式）
-     */
-    getTodayDateString() {
-        const now = new Date();
-        const year = now.getFullYear();
-        const month = String(now.getMonth() + 1).padStart(2, '0');
-        const day = String(now.getDate()).padStart(2, '0');
-        return `${year}-${month}-${day}`;
     }
     
     /**
@@ -1286,14 +1090,13 @@ export class TitleScene extends Phaser.Scene {
         
         // フェードアウトアニメーション
         this.tweens.add({
-            targets: [this.rankingOverlay.leftRankMatchPanel, this.rankingOverlay.rightDistancePanel, this.rankingOverlay.closeButton, this.rankingOverlay.overlayBg],
+            targets: [this.rankingOverlay.distancePanel, this.rankingOverlay.closeButton, this.rankingOverlay.overlayBg],
             alpha: 0,
             duration: 300,
             ease: 'Power2',
             onComplete: () => {
                 // オブジェクトを削除
-                this.rankingOverlay.leftRankMatchPanel.destroy();
-                this.rankingOverlay.rightDistancePanel.destroy();
+                this.rankingOverlay.distancePanel.destroy();
                 this.rankingOverlay.closeButton.destroy();
                 this.rankingOverlay.overlayBg.destroy();
                 this.rankingOverlay = null;
@@ -1358,43 +1161,6 @@ export class TitleScene extends Phaser.Scene {
         // フェードアウト完了後にシーン遷移
         this.cameras.main.once('camerafadeoutcomplete', () => {
             this.scene.start('TrophyScene');
-        });
-    }
-    
-    /**
-     * ランクマッチ画面への遷移
-     */
-    transitionToRankMatchScene() {
-        const fadeDuration = 500;
-        
-        // ランキングが表示されている場合は閉じる
-        if (this.rankingOverlay) {
-            this.closeRanking();
-        }
-        
-        // クレジットが表示されている場合は閉じる
-        if (this.creditOverlay) {
-            this.closeCredits();
-        }
-        
-        // Phaserのカメラをフェードアウト
-        this.cameras.main.fadeOut(fadeDuration, 0, 0, 0);
-        
-        // 動画要素もフェードアウト
-        if (this.videoElement) {
-            this.videoElement.style.transition = `opacity ${fadeDuration}ms ease-out`;
-            this.videoElement.style.opacity = '0';
-        }
-        
-        // フェードアウト完了後に0.5秒の黒画面一時停止
-        this.cameras.main.once('camerafadeoutcomplete', () => {
-            // カメラの背景を黒に設定
-            this.cameras.main.setBackgroundColor('#000000');
-            
-            // 0.5秒待機してからシーン遷移
-            this.time.delayedCall(500, () => {
-                this.scene.start('RankMatchScene');
-            });
         });
     }
     

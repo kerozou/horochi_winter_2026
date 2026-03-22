@@ -36,32 +36,8 @@ export class RocketEditorScene extends Phaser.Scene {
      * 達成済みトロフィーをロード
      */
     async loadUnlockedTrophies() {
-        try {
-            const { getApiClient } = await import('../utils/apiClient.js');
-            const apiClient = getApiClient();
-            const authToken = localStorage.getItem('authToken');
-            
-            if (!authToken) {
-                // トークンがない場合はローカルストレージから取得
-                const saved = localStorage.getItem('unlockedTrophies');
-                return saved ? JSON.parse(saved) : [];
-            }
-            
-            // APIからトロフィー情報を取得
-            const response = await apiClient.getTrophies(authToken);
-            const trophyData = response.data || {};
-            const unlockedList = trophyData.unlockedTrophies || [];
-            
-            // ローカルストレージにも保存（オフライン対応）
-            localStorage.setItem('unlockedTrophies', JSON.stringify(unlockedList));
-            
-            return unlockedList;
-        } catch (error) {
-            console.error('Error loading trophies from API:', error);
-            // エラー時はローカルストレージから取得
-            const saved = localStorage.getItem('unlockedTrophies');
-            return saved ? JSON.parse(saved) : [];
-        }
+        const saved = localStorage.getItem('unlockedTrophies');
+        return saved ? JSON.parse(saved) : [];
     }
     
     /**
@@ -1998,14 +1974,8 @@ export class RocketEditorScene extends Phaser.Scene {
             this.transitionToTitleScene();
         }, 0x7f8c8d);
         
-        // オンラインアップロードボタン
-        this.createButton(centerX + 200, 750, '☁️ アップロード', () => {
-            this.playButtonSound();
-            this.showUploadDialog();
-        }, 0x9b59b6);
-        
         // お気に入りボタン
-        this.createButton(centerX + 400, 750, '⭐ お気に入り', () => {
+        this.createButton(centerX + 200, 750, '⭐ お気に入り', () => {
             this.playButtonSound();
             this.showFavoritesMenu();
         }, 0xf39c12);
@@ -2542,10 +2512,6 @@ export class RocketEditorScene extends Phaser.Scene {
      */
     async saveFavorite(name) {
         try {
-            const { getApiClient } = await import('../utils/apiClient.js');
-            const apiClient = getApiClient();
-            const authToken = localStorage.getItem('authToken');
-            
             // 配置されたパーツの位置情報を保存
             const placedPartsData = this.placedParts.map(p => ({
                 isComposite: p.isComposite,
@@ -2572,20 +2538,7 @@ export class RocketEditorScene extends Phaser.Scene {
                 placedParts: placedPartsData
             };
             
-            if (authToken) {
-                // APIに保存
-                try {
-                    await apiClient.saveFavorite(authToken, favoriteData);
-                    console.log('Favorite saved to API:', name);
-                } catch (apiError) {
-                    console.error('Error saving favorite to API:', apiError);
-                    // APIエラー時はローカルストレージに保存
-                    this.saveFavoriteLocal(name, favoriteData);
-                }
-            } else {
-                // トークンがない場合はローカルストレージに保存
-                this.saveFavoriteLocal(name, favoriteData);
-            }
+            this.saveFavoriteLocal(name, favoriteData);
             
             this.showSuccessMessage(`「${name}」をお気に入りに保存しました！`);
         } catch (error) {
@@ -2727,189 +2680,6 @@ export class RocketEditorScene extends Phaser.Scene {
     }
     
     /**
-     * オンラインアップロードダイアログを表示
-     */
-    showUploadDialog() {
-        const screenWidth = this.cameras.main.width;
-        const screenHeight = this.cameras.main.height;
-        const centerX = screenWidth / 2;
-        const centerY = screenHeight / 2;
-        
-        // 既に表示されている場合は何もしない
-        if (this.uploadDialog) {
-            return;
-        }
-        
-        // パーツが配置されていない場合は警告
-        if (this.rocketDesign.parts.length === 0) {
-            this.showErrorMessage('パーツを配置してからアップロードしてください！');
-            return;
-        }
-        
-        // 動画を非表示にする
-        if (this.videoElement) {
-            this.videoElement.style.transition = 'opacity 300ms ease-out';
-            this.videoElement.style.opacity = '0';
-            this.videoElement.style.visibility = 'hidden';
-        }
-        
-        // オーバーレイ背景
-        const overlayBg = this.add.rectangle(
-            centerX,
-            centerY,
-            screenWidth,
-            screenHeight,
-            0x000000,
-            0.5
-        );
-        overlayBg.setInteractive();
-        overlayBg.setDepth(2099);
-        overlayBg.on('pointerdown', () => {
-            // 何もしない（パネル外のクリックを無効化）
-        });
-        
-        // ダイアログパネル
-        const dialogWidth = 600;
-        const dialogHeight = 350;
-        const dialogPanel = this.add.container(centerX, centerY);
-        dialogPanel.setDepth(2100);
-        
-        // パネル背景
-        const dialogBg = this.add.rectangle(0, 0, dialogWidth, dialogHeight, 0x34495e);
-        dialogBg.setStrokeStyle(3, 0xffffff);
-        
-        // タイトル
-        const titleText = this.add.text(0, -120, 'オンラインにアップロード', {
-            fontSize: '36px',
-            fill: '#ffffff',
-            fontStyle: 'bold'
-        });
-        titleText.setOrigin(0.5);
-        
-        // 説明文
-        const instructionText = this.add.text(0, -40, 'ロケット設計をオンラインにアップロードします', {
-            fontSize: '20px',
-            fill: '#ffffff',
-            align: 'center',
-            wordWrap: { width: dialogWidth - 40 }
-        });
-        instructionText.setOrigin(0.5);
-        
-        // アップロードボタン（左側）
-        const uploadButton = this.add.container(-120, 80);
-        const uploadBg = this.add.rectangle(0, 0, 200, 50, 0x9b59b6);
-        uploadBg.setStrokeStyle(2, 0xffffff);
-        const uploadText = this.add.text(0, 0, 'アップロード', {
-            fontSize: '24px',
-            fill: '#ffffff',
-            fontStyle: 'bold'
-        });
-        uploadText.setOrigin(0.5);
-        uploadButton.add([uploadBg, uploadText]);
-        uploadButton.setSize(200, 50);
-        uploadButton.setInteractive({ useHandCursor: true });
-        uploadButton.on('pointerover', () => {
-            uploadBg.setFillStyle(0x8e44ad);
-        });
-        uploadButton.on('pointerout', () => {
-            uploadBg.setFillStyle(0x9b59b6);
-        });
-        uploadButton.on('pointerdown', () => {
-            this.playButtonSound();
-            this.uploadToOnline();
-            if (overlayBg) {
-                overlayBg.destroy();
-            }
-            dialogPanel.destroy();
-            this.uploadDialog = null;
-            
-            // 動画を復活させる
-            if (this.videoElement) {
-                this.videoElement.style.transition = 'opacity 300ms ease-in';
-                this.videoElement.style.visibility = 'visible';
-                this.videoElement.style.opacity = '1';
-            }
-        });
-        
-        // キャンセルボタン（右側）
-        const cancelButton = this.add.container(120, 80);
-        const cancelBg = this.add.rectangle(0, 0, 200, 50, 0x7f8c8d);
-        cancelBg.setStrokeStyle(2, 0xffffff);
-        const cancelText = this.add.text(0, 0, 'キャンセル', {
-            fontSize: '24px',
-            fill: '#ffffff',
-            fontStyle: 'bold'
-        });
-        cancelText.setOrigin(0.5);
-        cancelButton.add([cancelBg, cancelText]);
-        cancelButton.setSize(200, 50);
-        cancelButton.setInteractive({ useHandCursor: true });
-        cancelButton.on('pointerover', () => {
-            cancelBg.setFillStyle(0x6c7a7d);
-        });
-        cancelButton.on('pointerout', () => {
-            cancelBg.setFillStyle(0x7f8c8d);
-        });
-        cancelButton.on('pointerdown', () => {
-            this.playButtonSound();
-            if (overlayBg) {
-                overlayBg.destroy();
-            }
-            dialogPanel.destroy();
-            this.uploadDialog = null;
-            
-            // 動画を復活させる
-            if (this.videoElement) {
-                this.videoElement.style.transition = 'opacity 300ms ease-in';
-                this.videoElement.style.visibility = 'visible';
-                this.videoElement.style.opacity = '1';
-            }
-        });
-        
-        dialogPanel.add([dialogBg, titleText, instructionText, uploadButton, cancelButton]);
-        
-        // 参照を保存
-        this.uploadDialog = {
-            overlayBg: overlayBg,
-            dialogPanel: dialogPanel
-        };
-    }
-    
-    /**
-     * オンラインにアップロード
-     */
-    uploadToOnline() {
-        try {
-            // 現在のロケット設計データを取得
-            const designData = this.rocketDesign.toJSON();
-            
-            // TODO: 実際のアップロード処理を実装
-            // 例: fetch APIを使用してサーバーにPOSTリクエストを送信
-            // fetch('https://api.example.com/rockets', {
-            //     method: 'POST',
-            //     headers: {
-            //         'Content-Type': 'application/json',
-            //     },
-            //     body: JSON.stringify(designData)
-            // })
-            // .then(response => response.json())
-            // .then(data => {
-            //     this.showSuccessMessage('アップロードが完了しました！');
-            // })
-            // .catch(error => {
-            //     this.showErrorMessage('アップロードに失敗しました。');
-            // });
-            
-            // 暫定的に成功メッセージを表示
-            console.log('Uploading design:', designData);
-            this.showSuccessMessage('アップロード機能は準備中です。');
-        } catch (error) {
-            console.error('Error uploading:', error);
-            this.showErrorMessage('アップロードに失敗しました。');
-        }
-    }
-    
-    /**
      * お気に入り読み込みダイアログを表示（削除予定）
      */
     showLoadFavoriteDialog(favorites) {
@@ -3017,31 +2787,8 @@ export class RocketEditorScene extends Phaser.Scene {
      * お気に入りを読み込む
      */
     async loadFavorites() {
-        try {
-            const { getApiClient } = await import('../utils/apiClient.js');
-            const apiClient = getApiClient();
-            const authToken = localStorage.getItem('authToken');
-            
-            if (!authToken) {
-                // トークンがない場合はローカルストレージから取得
-                const saved = localStorage.getItem('rocketFavorites');
-                return saved ? JSON.parse(saved) : [];
-            }
-            
-            // APIからお気に入り一覧を取得
-            const response = await apiClient.getFavorites(authToken);
-            const favorites = response.data || [];
-            
-            // ローカルストレージにも保存（オフライン対応）
-            localStorage.setItem('rocketFavorites', JSON.stringify(favorites));
-            
-            return favorites;
-        } catch (error) {
-            console.error('Error loading favorites from API:', error);
-            // エラー時はローカルストレージから取得
-            const saved = localStorage.getItem('rocketFavorites');
-            return saved ? JSON.parse(saved) : [];
-        }
+        const saved = localStorage.getItem('rocketFavorites');
+        return saved ? JSON.parse(saved) : [];
     }
     
     /**
@@ -3145,25 +2892,7 @@ export class RocketEditorScene extends Phaser.Scene {
      */
     async deleteFavorite(favoriteId) {
         try {
-            const { getApiClient } = await import('../utils/apiClient.js');
-            const apiClient = getApiClient();
-            const authToken = localStorage.getItem('authToken');
-            
-            if (authToken) {
-                // APIから削除
-                try {
-                    await apiClient.deleteFavorite(authToken, favoriteId);
-                    console.log('Favorite deleted from API:', favoriteId);
-                } catch (apiError) {
-                    console.error('Error deleting favorite from API:', apiError);
-                    // APIエラー時はローカルストレージから削除
-                    this.deleteFavoriteLocal(favoriteId);
-                }
-            } else {
-                // トークンがない場合はローカルストレージから削除
-                this.deleteFavoriteLocal(favoriteId);
-            }
-            
+            this.deleteFavoriteLocal(favoriteId);
             this.showSuccessMessage('お気に入りを削除しました！');
         } catch (error) {
             console.error('Error deleting favorite:', error);

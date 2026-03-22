@@ -205,32 +205,6 @@ export class TrophyScene extends Phaser.Scene {
             });
         }
         
-        // ランク上位達成トロフィー（3個：1位、2位、3位各1回）
-        trophies.push({
-            id: 'trophy_rank_1_1',
-            name: '1位達成',
-            description: 'ランクマッチで1位を達成',
-            condition: 'rankMatch',
-            rank: 1,
-            threshold: 1
-        });
-        trophies.push({
-            id: 'trophy_rank_2_1',
-            name: '2位達成',
-            description: 'ランクマッチで2位を達成',
-            condition: 'rankMatch',
-            rank: 2,
-            threshold: 1
-        });
-        trophies.push({
-            id: 'trophy_rank_3_1',
-            name: '3位達成',
-            description: 'ランクマッチで3位を達成',
-            condition: 'rankMatch',
-            rank: 3,
-            threshold: 1
-        });
-        
         // マイナス飛距離トロフィー（32個）
         // -1000m刻みで-30000mまで（30個）
         for (let i = 1; i <= 30; i++) {
@@ -260,43 +234,10 @@ export class TrophyScene extends Phaser.Scene {
     }
     
     /**
-     * 達成済みトロフィーをロード（API呼び出し）
+     * 達成済みトロフィーをロード（ローカルのみ）
      */
     async loadUnlockedTrophies() {
-        try {
-            const { getApiClient } = await import('../utils/apiClient.js');
-            const apiClient = getApiClient();
-            const authToken = localStorage.getItem('authToken');
-            
-            if (!authToken) {
-                // トークンがない場合はローカルストレージから取得
-                return this.loadUnlockedTrophiesLocal();
-            }
-            
-            // APIからトロフィー情報を取得
-            const response = await apiClient.getTrophies(authToken);
-            const trophyData = response.data || {};
-            
-            // ローカルストレージにも保存（オフライン対応）
-            if (trophyData.unlockedTrophies) {
-                localStorage.setItem('unlockedTrophies', JSON.stringify(trophyData.unlockedTrophies));
-            }
-            if (trophyData.collectedShibou) {
-                localStorage.setItem('collectedShibou', JSON.stringify(trophyData.collectedShibou));
-            }
-            if (trophyData.playCount !== undefined) {
-                localStorage.setItem('playCount', trophyData.playCount.toString());
-            }
-            
-            // 達成状況を再チェック（最新のゲームデータに基づいて）
-            const unlockedList = await this.checkTrophyAchievements(trophyData);
-            
-            return unlockedList;
-        } catch (error) {
-            console.error('Error loading trophies from API:', error);
-            // エラー時はローカルストレージから取得
-            return this.loadUnlockedTrophiesLocal();
-        }
+        return this.loadUnlockedTrophiesLocal();
     }
     
     /**
@@ -309,20 +250,6 @@ export class TrophyScene extends Phaser.Scene {
         // 飛距離トロフィーの達成状況をチェック
         const personalBest = parseInt(localStorage.getItem('personalBest') || '0');
         const playCount = parseInt(localStorage.getItem('playCount') || '0');
-        
-        // ランクマッチの順位達成回数をカウント
-        const rankCounts = { 1: 0, 2: 0, 3: 0 };
-        // すべてのランクマッチランキングを確認
-        for (let i = 0; i < localStorage.length; i++) {
-            const key = localStorage.key(i);
-            if (key && key.startsWith('rankMatchRanking_')) {
-                const ranking = JSON.parse(localStorage.getItem(key) || '[]');
-                // 各日付のランキングで1位、2位、3位をカウント（各日付で1回ずつ）
-                if (ranking.length > 0) rankCounts[1]++;
-                if (ranking.length > 1) rankCounts[2]++;
-                if (ranking.length > 2) rankCounts[3]++;
-            }
-        }
         
         const trophies = this.getTrophyList();
         trophies.forEach(trophy => {
@@ -339,10 +266,6 @@ export class TrophyScene extends Phaser.Scene {
                     }
                 }
             } else if (trophy.condition === 'playCount' && playCount >= trophy.threshold) {
-                if (!unlockedList.includes(trophy.id)) {
-                    unlockedList.push(trophy.id);
-                }
-            } else if (trophy.condition === 'rankMatch' && rankCounts[trophy.rank] >= trophy.threshold) {
                 if (!unlockedList.includes(trophy.id)) {
                     unlockedList.push(trophy.id);
                 }
@@ -367,7 +290,6 @@ export class TrophyScene extends Phaser.Scene {
         const unlockedList = [...(trophyData.unlockedTrophies || [])];
         const personalBest = parseInt(localStorage.getItem('personalBest') || '0');
         const playCount = trophyData.playCount || parseInt(localStorage.getItem('playCount') || '0');
-        const rankCounts = trophyData.rankCounts || { 1: 0, 2: 0, 3: 0 };
         const collectedShibou = trophyData.collectedShibou || JSON.parse(localStorage.getItem('collectedShibou') || '[]');
         
         const trophies = this.getTrophyList();
@@ -381,10 +303,6 @@ export class TrophyScene extends Phaser.Scene {
                     unlockedList.push(trophy.id);
                 }
             } else if (trophy.condition === 'playCount' && playCount >= trophy.threshold) {
-                if (!unlockedList.includes(trophy.id)) {
-                    unlockedList.push(trophy.id);
-                }
-            } else if (trophy.condition === 'rankMatch' && rankCounts[trophy.rank] >= trophy.threshold) {
                 if (!unlockedList.includes(trophy.id)) {
                     unlockedList.push(trophy.id);
                 }
@@ -650,7 +568,7 @@ export class TrophyScene extends Phaser.Scene {
         // 説明文
         // 達成済みかどうかを確認（ツールチップでは未達成でも表示するため、ここでは常にメッセージを追加しない）
         // ただし、達成済みの場合のみメッセージを追加する
-        const unlockedTrophies = this.loadUnlockedTrophies();
+        const unlockedTrophies = JSON.parse(localStorage.getItem('unlockedTrophies') || '[]');
         const isUnlocked = unlockedTrophies.includes(trophy.id);
         let tooltipDescription = trophy.description;
         if (trophy.condition === 'shibou' && isUnlocked && trophy.shibouNum) {

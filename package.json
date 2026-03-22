@@ -2,11 +2,12 @@
   "name": "hororocket",
   "version": "1.0.0",
   "description": "2D Rocket Launch Game with Phaser.js",
-  "main": "game.js",
+  "main": "electron/main.cjs",
   "type": "module",
   "scripts": {
     "start": "npx http-server -p 8000 -c-1",
-    "dev": "npx http-server -p 8000 -c-1 -o"
+    "dev": "npx http-server -p 8000 -c-1 -o",
+    "electron": "electron ."
   },
   "keywords": [
     "phaser",
@@ -19,6 +20,8 @@
   "dependencies": {
     "phaser": "^3.80.1"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "electron": "^35.0.0"
+  }
 }
 
