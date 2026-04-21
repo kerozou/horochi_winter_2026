@@ -93,26 +93,26 @@
             }
         }
 
-        /* Electron: グラデーション枠をやめ、ゲーム領域（黒）だけをウィンドウ全面に */
-        html.electron,
-        html.electron body {
+        /* Desktop App(Electron/Tauri): ゲーム領域（黒）だけをウィンドウ全面に */
+        html.desktop,
+        html.desktop body {
             width: 100%;
             height: 100%;
             margin: 0;
         }
 
-        html.electron body {
+        html.desktop body {
             display: block;
             background: #000;
         }
 
-        html.electron body > div {
+        html.desktop body > div {
             width: 100%;
             height: 100%;
             position: relative;
         }
 
-        html.electron #game-container {
+        html.desktop #game-container {
             width: 100%;
             height: 100%;
             border: none;
@@ -123,13 +123,14 @@
             left: 0;
         }
 
-        html.electron .info {
+        html.desktop .info {
             display: none;
         }
     </style>
     <script>
-        if (typeof window.electronApp !== 'undefined') {
-            document.documentElement.classList.add('electron');
+        const isDesktopShell = typeof window.electronApp !== 'undefined' || typeof window.__TAURI_INTERNALS__ !== 'undefined';
+        if (isDesktopShell) {
+            document.documentElement.classList.add('desktop');
         }
     </script>
 </head>
@@ -160,8 +161,9 @@
     <script>
         // ゲームエリア内で右クリックメニューを無効化
         document.addEventListener('DOMContentLoaded', () => {
-            if (typeof window.electronApp !== 'undefined') {
-                document.documentElement.classList.add('electron');
+            const isDesktopShell = typeof window.electronApp !== 'undefined' || typeof window.__TAURI_INTERNALS__ !== 'undefined';
+            if (isDesktopShell) {
+                document.documentElement.classList.add('desktop');
             }
             const gameContainer = document.getElementById('game-container');
             if (gameContainer) {

@@ -34,19 +34,21 @@ npm ci
 
 ---
 
-## Electron（デスクトップアプリとして起動）する手順
+## Tauri（デスクトップアプリとして起動）する手順
 
 1. 依存関係を入れる（未実施のときだけ）  
    `npm ci`
-2. Electron で起動する  
-   `npm run electron`  
+2. Tauri で起動する  
+   `npm run tauri:dev`  
    ウィンドウにゲームが表示されます。
+
+※ 現在の Tauri 版は Steam 連携を無効化した構成です。Steamworks（App ID、実績、SteamPipe 配布）の情報は **[docs/STEAM.md](docs/STEAM.md)** に残していますが、Electron 前提の内容です。
 
 ---
 
-## 配布用ビルド（electron-builder）の手順
+## 配布用ビルド（Tauri）の手順
 
-インストーラや実行ファイルを作り、他の PC に配るための手順です。成果物は **`dist-app/`** に出力されます（このフォルダは Git に含めません）。
+インストーラや実行ファイルを作り、他の PC に配るための手順です。成果物は主に **`src-tauri/target/release/bundle/`** に出力されます（このフォルダは Git に含めません）。
 
 ### 1. 依存関係を入れる
 
@@ -59,45 +61,37 @@ npm ci
 | やりたいこと | 実行するコマンド | 備考 |
 |--------------|------------------|------|
 | 今使っている OS 向けに自動でビルド | `npm run dist` | |
-| Windows 用（NSIS インストーラ・64bit） | `npm run dist:win` | 基本的に **Windows 上** で実行 |
+| Windows 用（NSIS） | `npm run dist:win` | 基本的に **Windows 上** で実行 |
 | macOS 用（DMG） | `npm run dist:mac` | **macOS 上** で実行すること |
 | Linux 用（AppImage） | `npm run dist:linux` | **Linux 上** で実行すること |
 
 ### 3. 成果物を確認する
 
-- ビルドが終わると **`dist-app/`** にインストーラ（`.exe` など）や展開済みフォルダ（例: `win-unpacked`）ができます。
-- **初回**は Electron のダウンロードなどがあり、時間がかかることがあります。
+- ビルドが終わると **`src-tauri/target/release/bundle/`** にインストーラ（`.exe` など）が生成されます。
+- **初回**は Rust の依存取得が走るため、時間がかかることがあります。
 
 ### 4. バージョンや表示名を変えたいとき
 
 - アプリのバージョン: `package.json` の `"version"`
-- アプリ名・識別子: `package.json` の `build.productName` と `build.appId`
+- アプリ名・識別子: `src-tauri/tauri.conf.json` の `productName` と `identifier`
 
 ### 5. コード署名について
 
-- 証明書を設定していない場合は**未署名**のビルドになります（実行時に OS の警告が出ることがあります）。
+- 証明書を設定していない場合は **未署名** のビルドになります（実行時に OS の警告が出ることがあります）。
 - 本番配布で警告を減らすには、Windows の Authenticode や macOS の公証など、各 OS の手順を別途用意します。
 
 ---
 
-## Windows でビルドが失敗するとき（シンボリックリンク / winCodeSign）
+## Windows で Tauri ビルドが失敗するとき
 
-`Cannot create symbolic link` と `winCodeSign` の展開で失敗するのは、electron-builder が exe にメタデータを書き込む際に **winCodeSign** を展開し、その中の macOS 用ファイルのシンボリックリンクを Windows が作れない場合に起きます。
-
-このリポジトリでは `package.json` の `build.win.signAndEditExecutable` を **`false`** にして、上記の展開を行わないようにしています（未署名ビルド向けの回避）。そのうえで再度 `npm run dist` を試してください。
-
-それでも同様のエラーになる場合は、次も試せます。
-
-1. **設定** → **システム** → **開発者向け** → **開発者モード** をオンにする
-2. **管理者として** PowerShell などを開き、プロジェクトフォルダで `npm run dist:win` を実行する
-
-将来、Windows 用コード署名を本格的に行う場合は `signAndEditExecutable` の扱いを見直す必要があることがあります。
+- Rust ツールチェーン未導入のことが多いため、`rustup` と `Microsoft C++ Build Tools` の導入を確認してください。
+- 詳細は Tauri 公式の prerequisite ガイドを参照してください。
 
 ---
 
 ## アイコン（任意）
 
-未設定のときは Electron のデフォルトアイコンです。差し替える場合は `package.json` の `build` にアイコンを指定します（例: Windows 用 `.ico` を `resources` に置き、`win.icon` を設定）。
+現在は `src-tauri/icons/icon.png` を使用しています。差し替える場合は Tauri のアイコン形式（`png` / `ico` / `icns`）を用意して `src-tauri/tauri.conf.json` で設定してください。
 
 ---
 

@@ -5,3 +5,8 @@ node_modules/
 
 # electron-builder 成果物
 dist-app/
+dist-tauri/
+
+# tauri / rust build artifacts
+src-tauri/target/
+src-tauri/gen/
