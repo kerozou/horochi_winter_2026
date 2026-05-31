@@ -7,10 +7,10 @@ export class EntryScene extends Phaser.Scene {
     }
 
     /**
-     * 先にスプラッシュ用画像だけ読み込む（create より前に実行される）
+     * 先にゲーム用リソースを読み込む（create より前に実行される）
      */
     preload() {
-        this.load.image('splash_pjhorochi', 'resources/pjhorochi.png');
+        this.loadAllResources();
     }
 
     create() {
@@ -31,26 +31,6 @@ export class EntryScene extends Phaser.Scene {
             });
             return;
         }
-
-        const screenWidth = this.cameras.main.width;
-        const screenHeight = this.cameras.main.height;
-
-        const graphics = this.add.graphics();
-        graphics.fillStyle(0x000000);
-        graphics.fillRect(0, 0, screenWidth, screenHeight);
-
-        const centerX = screenWidth / 2;
-        const centerY = screenHeight / 2;
-        if (this.textures.exists('splash_pjhorochi')) {
-            const splash = this.add.image(centerX, centerY, 'splash_pjhorochi');
-            const scale = Math.min(screenWidth / splash.width, screenHeight / splash.height);
-            splash.setScale(scale);
-            splash.setDepth(50);
-            splash.setScrollFactor(0);
-            this.splashImage = splash;
-        }
-
-        this.cameras.main.fadeIn(300, 0, 0, 0);
 
         this.bootstrapLocalAndLoad().catch((err) => {
             console.error('EntryScene: bootstrap failed:', err);
@@ -84,31 +64,22 @@ export class EntryScene extends Phaser.Scene {
      * @param {string} userId - ユーザーID
      */
     loadResourcesAndTransition(userId) {
-        // カメラが初期化されているか確認
         if (!this.cameras || !this.cameras.main) {
             console.error('Camera not initialized in loadResourcesAndTransition');
-            // カメラが初期化されていない場合は直接遷移
             this.transitionToTitle(userId);
             return;
         }
-        
-        // リソースをロード（スプラッシュ画像は表示したまま）
-        this.loadAllResources();
-        
-        // ロード完了後、スプラッシュをしばらく表示してから遷移（切り替わりを自然に）
-        const postSplashWaitMs = 700;
-        this.load.once('complete', () => {
-            console.log('All resources loaded');
-            this.time.delayedCall(postSplashWaitMs, () => {
-                if (!this.scene || !this.scene.isActive('EntryScene')) {
-                    return;
-                }
+
+        if (this.load.isLoading()) {
+            this.load.once('complete', () => {
+                console.log('All resources loaded');
                 this.transitionToTitle(userId);
             });
-        });
-        
-        // ロード開始
-        this.load.start();
+            return;
+        }
+
+        console.log('All resources loaded');
+        this.transitionToTitle(userId);
     }
     
     /**
@@ -229,30 +200,16 @@ export class EntryScene extends Phaser.Scene {
      * @param {string} userId - ユーザーID（オプション）
      */
     transitionToTitle(userId = null) {
-        const fadeDuration = 500; // フェードアウトの時間（ミリ秒）
-        
-        // ユーザーIDが渡されていない場合はlocalStorageから取得
         if (!userId) {
             userId = localStorage.getItem('userId');
         }
-        
-        // Phaserのカメラをフェードアウト
-        this.cameras.main.fadeOut(fadeDuration, 0, 0, 0);
-        
-        // フェードアウト完了後にシーン遷移
-        this.cameras.main.once('camerafadeoutcomplete', () => {
-            if (this.splashImage) {
-                this.splashImage.destroy();
-                this.splashImage = null;
-            }
-            if (this.loadingText) {
-                this.loadingText.destroy();
-                this.loadingText = null;
-            }
-            
-            // ユーザーIDをTitleSceneに渡す
-            this.scene.start('TitleScene', { userId: userId });
-        });
+
+        if (this.loadingText) {
+            this.loadingText.destroy();
+            this.loadingText = null;
+        }
+
+        this.scene.start('TitleScene', { userId: userId });
     }
     
     /**
@@ -268,11 +225,7 @@ export class EntryScene extends Phaser.Scene {
         if (this.passwordInput && this.passwordInput.parentNode) {
             this.passwordInput.parentNode.removeChild(this.passwordInput);
         }
-        
-        if (this.splashImage) {
-            this.splashImage.destroy();
-            this.splashImage = null;
-        }
+
         if (this.loadingText) {
             this.loadingText.destroy();
             this.loadingText = null;

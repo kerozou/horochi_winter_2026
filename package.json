@@ -2,18 +2,23 @@
   "name": "hororocket",
   "version": "2.1.0",
   "description": "2D Rocket Launch Game with Phaser.js",
-  "main": "index.html",
+  "main": "electron/main.cjs",
   "type": "module",
   "scripts": {
     "start": "npx http-server -p 8000 -c-1",
     "dev": "npx http-server -p 8000 -c-1 -o",
+    "electron": "electron .",
+    "dist": "electron-builder",
+    "dist:win": "electron-builder --win",
+    "dist:mac": "electron-builder --mac",
+    "dist:linux": "electron-builder --linux",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:prepare": "node scripts/prepare-tauri-dist.cjs",
-    "dist": "tauri build",
-    "dist:win": "tauri build --bundles nsis",
-    "dist:mac": "tauri build --bundles dmg",
-    "dist:linux": "tauri build --bundles appimage",
+    "tauri:dist": "tauri build",
+    "tauri:dist:win": "tauri build --bundles nsis",
+    "tauri:dist:mac": "tauri build --bundles dmg",
+    "tauri:dist:linux": "tauri build --bundles appimage",
     "postinstall": "node scripts/copy-phaser.cjs",
     "vendor:phaser": "node scripts/copy-phaser.cjs"
   },
@@ -26,11 +31,68 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "@tauri-apps/api": "^2.8.0",
     "phaser": "^3.80.1",
     "steamworks.js": "^0.4.0"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2.8.0"
+    "@tauri-apps/cli": "^2.8.0",
+    "electron": "^35.0.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.hororocket.horochi-winter",
+    "productName": "ほろっちの冬休み",
+    "directories": {
+      "output": "dist-app"
+    },
+    "files": [
+      "**/*",
+      "!backend/**",
+      "!infra/**",
+      "!.github/**",
+      "!dist-app/**",
+      "!dist-tauri/**",
+      "!src-tauri/**",
+      "!**/*.md",
+      "!**/.env",
+      "!**/.env.*"
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "**/node_modules/steamworks.js/**"
+    ],
+    "extraFiles": [
+      {
+        "from": "steam_appid.txt",
+        "to": "steam_appid.txt"
+      }
+    ],
+    "win": {
+      "signAndEditExecutable": false,
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.games"
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "category": "Game"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
   }
 }
